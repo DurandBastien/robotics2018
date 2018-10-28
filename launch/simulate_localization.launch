@@ -1,0 +1,12 @@
+<launch>
+
+<arg name="yaml" /> 
+<arg name="world" />
+
+<node name="mapserver" pkg="map_server" type="map_server" args="$(arg yaml)" />
+<node name="stage" pkg="stage_ros" type="stageros" args="$(arg world)"/>
+<node name="pflocalisation" pkg="pf_localisation" type="node.py" />
+<node name="rviz" pkg="rviz" type="rviz" />
+
+
+</launch>
