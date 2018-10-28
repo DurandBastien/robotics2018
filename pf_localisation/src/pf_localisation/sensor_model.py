@@ -14,15 +14,15 @@ PI_OVER_TWO = math.pi/2
 class SensorModel(object):
     def __init__(self):
         # Parameters for particle weight calculation
-        self.z_hit = 0.95 		# Default probability if we make a hit
-        self.z_short = 0.1 	# Probability of a short reading from 
+        self.z_hit = 0.95       # Default probability if we make a hit
+        self.z_short = 0.1  # Probability of a short reading from 
                                # unexpected obstacle (e.g. person or object)
-        self.z_max = 0.05 		# Probability of failure to detect an obstacle,
+        self.z_max = 0.05       # Probability of failure to detect an obstacle,
                                # reported as max range
-        self.z_rand = 0.05 	# Random noise on all readings
+        self.z_rand = 0.05  # Random noise on all readings
         
-        self.sigma_hit = 0.2 		# Noise on hit
-        self.lambda_short = 0.1 	# Noise on short reading
+        self.sigma_hit = 0.2        # Noise on hit
+        self.lambda_short = 0.1     # Noise on short reading
         
         # Initialise scan parameters to nothing
         self.set_laser_scan_parameters(0, 0, 0, 0, 0)
@@ -166,5 +166,3 @@ class SensorModel(object):
         assert(pz >= 0.0)
         
         return pz
-
-   

@@ -26,10 +26,10 @@ PI_OVER_TWO = math.pi/2 # For faster calculations
 
 class PFLocaliserBase(object):
 
-    INIT_X = 10 		# Initial x location of robot (metres)
-    INIT_Y = 5			# Initial y location of robot (metres)
-    INIT_Z = 0 			# Initial z location of robot (metres)
-    INIT_HEADING = 0 	# Initial orientation of robot (radians)
+    INIT_X = 10         # Initial x location of robot (metres)
+    INIT_Y = 5          # Initial y location of robot (metres)
+    INIT_Z = 0          # Initial z location of robot (metres)
+    INIT_HEADING = 0    # Initial orientation of robot (radians)
     
     def __init__(self):
         # Initialise fields
@@ -41,9 +41,9 @@ class PFLocaliserBase(object):
         self._update_lock =  Lock()
         
         # Parameters
-        self.ODOM_ROTATION_NOISE = 0 		# Odometry model rotation noise
-        self.ODOM_TRANSLATION_NOISE = 0 	# Odometry x axis (forward) noise
-        self.ODOM_DRIFT_NOISE = 0 			# Odometry y axis (side-side) noise
+        self.ODOM_ROTATION_NOISE = 0        # Odometry model rotation noise
+        self.ODOM_TRANSLATION_NOISE = 0     # Odometry x axis (forward) noise
+        self.ODOM_DRIFT_NOISE = 0           # Odometry y axis (side-side) noise
         self.NUMBER_PREDICTED_READINGS = 20
     
         # Set 'previous' translation to origin
@@ -127,7 +127,6 @@ class PFLocaliserBase(object):
         
         :Args:
             | scan (sensor_msgs.msg.LaserScan): laser scan to use for update
-
          """
         raise NotImplementedError()
 
@@ -267,6 +266,7 @@ class PFLocaliserBase(object):
     def set_initial_pose(self, pose):
         """ Initialise filter with start pose """
         self.estimatedpose.pose = pose.pose
+        a = self.estimatedpose.pose.pose.position
         # Estimated pose has been set, so we should now reinitialise the 
         # particle cloud around it
         rospy.loginfo("Got pose. Calling initialise_particle_cloud().")
@@ -279,5 +279,5 @@ class PFLocaliserBase(object):
         self.sensor_model.set_map(occupancy_map)
         # Map has changed, so we should reinitialise the particle cloud
         rospy.loginfo("Particle filter got map. (Re)initialising.")
-        self.particlecloud = self.initialise_particle_cloud(self.estimatedpose)
+        # self.particlecloud = self.initialise_particle_cloud(self.estimatedpose)
         self.particlecloud.header.frame_id = "/map"
