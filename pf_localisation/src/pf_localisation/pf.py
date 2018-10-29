@@ -34,11 +34,6 @@ class PFLocaliser(PFLocaliserBase):
         noise_x = np.random.normal(0,initialpose.pose.covariance[0],NUMBER_OF_PARTICLES)
         noise_y = np.random.normal(0,initialpose.pose.covariance[7],NUMBER_OF_PARTICLES)
         noise_theta = np.random.normal(0,initialpose.pose.covariance[35],NUMBER_OF_PARTICLES)
-        # particle_theta = np.random.random() * 360
-        # quaternion_array = transformations.quaternion_from_euler(0, 0, particle_theta)
-        # particle_quaternion = Quaternion(quaternion_array[0], quaternion_array[1], quaternion_array[2], quaternion_array[3])
-        # new_particlecloud.poses.append(Pose(Point(0,0,0), particle_quaternion))
-        # new_particlecloud.poses.append(Pose(Point(0,0,1), particle_quaternion))
         for ith_particule in range(NUMBER_OF_PARTICLES):
             initialpose_quaternion = [initialpose.pose.pose.orientation.x, initialpose.pose.pose.orientation.y, initialpose.pose.pose.orientation.z, initialpose.pose.pose.orientation.w]
             particle_theta = noise_theta[ith_particule] * 360 + transformations.euler_from_quaternion(initialpose_quaternion)[0]
@@ -55,8 +50,17 @@ class PFLocaliser(PFLocaliserBase):
     
     def update_particle_cloud(self, scan):
         # Update particlecloud, given map and laser scan
-        pass
+        weighted_poses = []
+        for particle in self.particlecloud.poses:
+            weighted_poses.append([particle, self.sensor_model.get_weight(scan, particle.pose)])
+        resampled_poses = resample(weighted_poses, len(weighted_poses))
 
+        resampled_cloud = PoseArray()
+        for particle in resampled_poses:
+            resampled_cloud.poses.append(particle[0])
+
+        self.particlecloud = resampled_cloud
+        
     def estimate_pose(self):
         # Create new estimated pose, given particle cloud
         # E.g. just average the location and orientation values of each of
@@ -66,3 +70,26 @@ class PFLocaliser(PFLocaliserBase):
         # e.g. taking the average location of half the particles after 
         # throwing away any which are outliers
         return self.estimatedpose.pose.pose
+
+    def resample(particles, n):
+        totalWeight = 0
+        for i in range(len(particles)):
+            totalWeight = totalWeight + particles[i][1]
+        rands = []
+        for i in range(n + 1):
+            rands.append(random.uniform(0.0, totalWeight))
+        sortedRands = sorted(rands)
+        counter = 0
+        rCounter = 0
+        output = []
+        lengthOfOutput = 0
+        sumSoFar = particles[0][1]
+        while (lengthOfOutput < n):
+            if(sortedRands[rCounter] < sumSoFar):
+                output.append(particles[counter])
+                rCounter = rCounter + 1
+                lengthOfOutput = lengthOfOutput + 1
+            else:
+                counter = counter + 1
+                sumSoFar = sumSoFar + particles[counter][1]
+        return output
