@@ -6,7 +6,7 @@ import math
 import rospy
 
 from util import rotateQuaternion, getHeading
-from random import random
+import random
 
 from time import time
 
@@ -52,44 +52,84 @@ class PFLocaliser(PFLocaliserBase):
         # Update particlecloud, given map and laser scan
         weighted_poses = []
         for particle in self.particlecloud.poses:
-            weighted_poses.append([particle, self.sensor_model.get_weight(scan, particle.pose)])
-        resampled_poses = resample(weighted_poses, len(weighted_poses))
-
+            #weighted_poses.append([particle, self.sensor_model.get_weight(scan, particle.pose)])
+			weighted_poses.append([particle, 1/len(self.particlecloud.poses)])
+        #resampled_poses = self.resample(weighted_poses, len(weighted_poses))
+		n = len(weighted_poses)
+		totalWeight = 0
+		for i in range(len(particles)):
+		    totalWeight = totalWeight + self.weighted_poses[i][1]
+		rands = []
+		for i in range(n + 1):
+		    rands.append(random.uniform(0.0, totalWeight))
+		sortedRands = sorted(rands)
+		counter = 0
+		rCounter = 0
+		output = []
+		lengthOfOutput = 0
+		sumSoFar = particles[0][1]
+		while (lengthOfOutput < n):
+		    if(sortedRands[rCounter] < sumSoFar):
+			output.append(particles[counter])
+			rCounter = rCounter + 1
+			lengthOfOutput = lengthOfOutput + 1
+		    else:
+				if counter<len(particles):
+					counter = counter + 1
+					sumSoFar = sumSoFar + particles[counter][1]
+		resampled_poses = output
         resampled_cloud = PoseArray()
         for particle in resampled_poses:
             resampled_cloud.poses.append(particle[0])
 
         self.particlecloud = resampled_cloud
-        
+
+	 
+
     def estimate_pose(self):
         # Create new estimated pose, given particle cloud
         # E.g. just average the location and orientation values of each of
         # the particles and return this.
         
-        # Better approximations could be made by doing some simple clustering,
-        # e.g. taking the average location of half the particles after 
-        # throwing away any which are outliers
-        return self.estimatedpose.pose.pose
+		# Better approximations could be made by doing some simple clustering,
+		# e.g. taking the average location of half the particles after 
+		# throwing away any which are outliers
+		# takes input in the form of a ROS PoseArray
+		# currently averaging values
+		# averaging quanternions only makes sense if their orientations are similar. If they're not, averages are
+		# meaningless and require multiple representations (from paper below).
+		# http://www.cs.unc.edu/techreports/01-029.pdf
 
-    def resample(particles, n):
-        totalWeight = 0
-        for i in range(len(particles)):
-            totalWeight = totalWeight + particles[i][1]
-        rands = []
-        for i in range(n + 1):
-            rands.append(random.uniform(0.0, totalWeight))
-        sortedRands = sorted(rands)
-        counter = 0
-        rCounter = 0
-        output = []
-        lengthOfOutput = 0
-        sumSoFar = particles[0][1]
-        while (lengthOfOutput < n):
-            if(sortedRands[rCounter] < sumSoFar):
-                output.append(particles[counter])
-                rCounter = rCounter + 1
-                lengthOfOutput = lengthOfOutput + 1
-            else:
-                counter = counter + 1
-                sumSoFar = sumSoFar + particles[counter][1]
-        return output
+		x,y,qy,qw = 0,0,0,0
+
+		for item in self.particlecloud.poses:
+			# z should always be 0
+			x += item.position.x
+			y += item.position.y
+
+			# this should need yaw only
+			qy += item.orientation.y
+			qw += item.orientation.w
+
+
+		n = len(pose_array.poses)
+
+		# calculate mean values
+		mean_x = x/n
+		mean_y = y/n
+
+		mean_qy = qy/n
+		mean_qw = qw/n
+
+		# the other vars should be initialised to 0.0 so don't need to be defined here
+		estimated_pose = Pose()
+		estimated_pose.position.x = mean_x
+		estimated_pose.position.y = mean_y
+
+		estimated_pose.orientation.y = mean_qy
+		estimated_pose.orientation.w = mean_qw
+
+		return estimated_pose
+        #return self.estimatedpose.pose.pose
+
+

@@ -7,7 +7,7 @@ from util import getHeading
 
 import math
 
-import laser_trace
+#import laser_trace
 
 PI_OVER_TWO = math.pi/2 
 
@@ -84,13 +84,13 @@ class SensorModel(object):
         :Returns:
             | (double) Range (in m) expected to be observed by the laser
         """
-        r = laser_trace.map_calc_range(ox, oy, oa, self.map_width,
-                                          self.map_height,
-                                          self.map_origin_x,
-                                          self.map_origin_y,
-                                          self.map_resolution,
-                                          self.scan_range_max,
-                                          self.map_data)
+        #r = laser_trace.map_calc_range(ox, oy, oa, self.map_width,
+         #                                 self.map_height,
+          #                                self.map_origin_x,
+           #                               self.map_origin_y,
+            #                              self.map_resolution,
+             #                             self.scan_range_max,
+              #                            self.map_data)
         r = self.scan_range_max
         if r <= self.scan_range_max:
             return r

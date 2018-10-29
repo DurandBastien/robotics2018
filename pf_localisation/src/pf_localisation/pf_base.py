@@ -281,3 +281,5 @@ class PFLocaliserBase(object):
         rospy.loginfo("Particle filter got map. (Re)initialising.")
         # self.particlecloud = self.initialise_particle_cloud(self.estimatedpose)
         self.particlecloud.header.frame_id = "/map"
+
+
