@@ -128,7 +128,38 @@ class PFLocaliserBase(object):
         :Args:
             | scan (sensor_msgs.msg.LaserScan): laser scan to use for update
          """
-        raise NotImplementedError()
+        weightedPoses = []
+        for pose in self.particlecloud.poses:
+            weight = self.sensor_model.get_weight(scan, pose)
+            weightedPoses.append((pose, weight))
+            result = resample(weightedPoses, len(weightedPoses))
+            self.particlecloud.poses = []
+        for pose in result:
+            self.particlecloud.append(pose[0])
+            
+    """I've brought the below method over, it's just used inside update_particle_cloud.  Take no notice of it.  -ND"""
+    def resample(particles, n):
+        totalWeight = 0
+        for i in range(len(particles)):
+            totalWeight = totalWeight + particles[i][1]
+            rands = []
+        for i in range(n + 1):
+            rands.append(random.uniform(0.0, totalWeight))
+            sortedRands = sorted(rands)
+        counter = 0
+        rCounter = 0
+        output = []
+        lengthOfOutput = 0
+        sumSoFar = particles[0][1]
+        while (lengthOfOutput < n):
+            if(sortedRands[rCounter] < sumSoFar):
+                output.append(particles[counter])
+                rCounter = rCounter + 1
+                lengthOfOutput = lengthOfOutput + 1
+            else:
+                counter = counter + 1
+                sumSoFar = sumSoFar + particles[counter][1]
+        return output
 
 
     def estimate_pose(self):
