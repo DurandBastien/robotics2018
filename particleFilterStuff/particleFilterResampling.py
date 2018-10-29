@@ -55,4 +55,4 @@ def liuResample(particles):
 
 '''Test'''
 print(resample([('a', 12), ('b', 2), ('c', 5)], 5))
-print(liuResample([('a', 12), ('b', 2), ('c', 5)]))
+#print(liuResample([('a', 12), ('b', 2), ('c', 5)]))

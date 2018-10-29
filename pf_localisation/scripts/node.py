@@ -5,7 +5,9 @@ This is the main entry point for the particle filter exercise node. It
 subscribes to laser, map, and odometry and creates an instance of
 pf.PFLocaliser() to do the localisation.
 """
-
+import os
+import sys
+sys.path.append(os.path.abspath("/data/private/robot/robotics/src/working_package/pf_localisation/src"))
 import rospy
 import pf_localisation.pf
 from pf_localisation.util import *

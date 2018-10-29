@@ -132,8 +132,8 @@ class PFLocaliserBase(object):
         for pose in self.particlecloud.poses:
             weight = self.sensor_model.get_weight(scan, pose)
             weightedPoses.append((pose, weight))
-            result = resample(weightedPoses, len(weightedPoses))
-            self.particlecloud.poses = []
+        result = resample(weightedPoses, len(weightedPoses))
+        self.particlecloud.poses = []
         for pose in result:
             self.particlecloud.append(pose[0])
             
