@@ -81,8 +81,8 @@ class PFLocaliserBase(object):
         :Return:
             | (geometry_msgs.msg.PoseArray) poses of the particles
         """
-        return PoseArray()
-        # raise NotImplementedError()
+        
+        raise NotImplementedError()
 
     def update_filter(self, scan):
         """
@@ -128,17 +128,10 @@ class PFLocaliserBase(object):
         :Args:
             | scan (sensor_msgs.msg.LaserScan): laser scan to use for update
          """
-        weightedPoses = []
-        for pose in self.particlecloud.poses:
-            weight = self.sensor_model.get_weight(scan, pose)
-            weightedPoses.append((pose, weight))
-        result = resample(weightedPoses, len(weightedPoses))
-        self.particlecloud.poses = []
-        for pose in result:
-            self.particlecloud.append(pose[0])
+        raise NotImplementedError()
             
     """I've brought the below method over, it's just used inside update_particle_cloud.  Take no notice of it.  -ND"""
-    def resample(particles, n):
+    def resample(self, particles, n):
         totalWeight = 0
         for i in range(len(particles)):
             totalWeight = totalWeight + particles[i][1]

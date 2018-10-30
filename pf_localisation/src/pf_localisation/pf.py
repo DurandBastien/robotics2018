@@ -50,39 +50,47 @@ class PFLocaliser(PFLocaliserBase):
     
     def update_particle_cloud(self, scan):
         # Update particlecloud, given map and laser scan
-        weighted_poses = []
-        for particle in self.particlecloud.poses:
-            #weighted_poses.append([particle, self.sensor_model.get_weight(scan, particle.pose)])
-			weighted_poses.append([particle, 1/len(self.particlecloud.poses)])
-        #resampled_poses = self.resample(weighted_poses, len(weighted_poses))
-		n = len(weighted_poses)
-		totalWeight = 0
-		for i in range(len(particles)):
-		    totalWeight = totalWeight + self.weighted_poses[i][1]
-		rands = []
-		for i in range(n + 1):
-		    rands.append(random.uniform(0.0, totalWeight))
-		sortedRands = sorted(rands)
-		counter = 0
-		rCounter = 0
-		output = []
-		lengthOfOutput = 0
-		sumSoFar = particles[0][1]
-		while (lengthOfOutput < n):
-		    if(sortedRands[rCounter] < sumSoFar):
-			output.append(particles[counter])
-			rCounter = rCounter + 1
-			lengthOfOutput = lengthOfOutput + 1
-		    else:
-				if counter<len(particles):
-					counter = counter + 1
-					sumSoFar = sumSoFar + particles[counter][1]
-		resampled_poses = output
-        resampled_cloud = PoseArray()
-        for particle in resampled_poses:
-            resampled_cloud.poses.append(particle[0])
+        weightedPoses = []
+        for pose in self.particlecloud.poses:
+            weight = self.sensor_model.get_weight(scan, pose)
+            weightedPoses.append((pose, weight))
+        result = self.resample(weightedPoses, len(weightedPoses))
+        self.particlecloud.poses = []
+        for pose in result:
+            self.particlecloud.poses.append(pose[0])
+  #       weighted_poses = []
+  #       for particle in self.particlecloud.poses:
+  #           #weighted_poses.append([particle, self.sensor_model.get_weight(scan, particle.pose)])
+		# 	weighted_poses.append([particle, 1/len(self.particlecloud.poses)])
+  #       #resampled_poses = self.resample(weighted_poses, len(weighted_poses))
+		# n = len(weighted_poses)
+		# totalWeight = 0
+		# for i in range(len(particles)):
+		#     totalWeight = totalWeight + self.weighted_poses[i][1]
+		# rands = []
+		# for i in range(n + 1):
+		#     rands.append(random.uniform(0.0, totalWeight))
+		# sortedRands = sorted(rands)
+		# counter = 0
+		# rCounter = 0
+		# output = []
+		# lengthOfOutput = 0
+		# sumSoFar = particles[0][1]
+		# while (lengthOfOutput < n):
+		#     if(sortedRands[rCounter] < sumSoFar):
+		# 	output.append(particles[counter])
+		# 	rCounter = rCounter + 1
+		# 	lengthOfOutput = lengthOfOutput + 1
+		#     else:
+		# 		if counter<len(particles):
+		# 			counter = counter + 1
+		# 			sumSoFar = sumSoFar + particles[counter][1]
+		# resampled_poses = output
+  #       resampled_cloud = PoseArray()
+  #       for particle in resampled_poses:
+  #           resampled_cloud.poses.append(particle[0])
 
-        self.particlecloud = resampled_cloud
+  #       self.particlecloud = resampled_cloud
 
 	 
 
@@ -99,7 +107,7 @@ class PFLocaliser(PFLocaliserBase):
 		# averaging quanternions only makes sense if their orientations are similar. If they're not, averages are
 		# meaningless and require multiple representations (from paper below).
 		# http://www.cs.unc.edu/techreports/01-029.pdf
-
+		rospy.loginfo(len(self.particlecloud.poses))
 		x,y,qy,qw = 0,0,0,0
 
 		for item in self.particlecloud.poses:
@@ -112,7 +120,7 @@ class PFLocaliser(PFLocaliserBase):
 			qw += item.orientation.w
 
 
-		n = len(pose_array.poses)
+		n = len(self.particlecloud.poses)
 
 		# calculate mean values
 		mean_x = x/n
