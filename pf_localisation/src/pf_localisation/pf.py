@@ -65,7 +65,6 @@ class PFLocaliser(PFLocaliserBase):
             resampled_cloud.poses.append(particle[0])
 
         self.particlecloud = resampled_cloud
-
 	 
 
     def estimate_pose(self):
@@ -73,6 +72,7 @@ class PFLocaliser(PFLocaliserBase):
         # E.g. just average the location and orientation values of each of
         # the particles and return this.
         
+
 	# Better approximations could be made by doing some simple clustering,
 	# e.g. taking the average location of half the particles after 
 	# throwing away any which are outliers
@@ -94,24 +94,24 @@ class PFLocaliser(PFLocaliserBase):
 	    qw += item.orientation.w
 
 
-	    n = len(pose_array.poses)
+	n = len(pose_array.poses)
 
-	    # calculate mean values
-	    mean_x = x/n
-	    mean_y = y/n
+	# calculate mean values
+	mean_x = x/n
+        mean_y = y/n
 
-	    mean_qy = qy/n
-	    mean_qw = qw/n
+        mean_qy = qy/n
+	mean_qw = qw/n
 
-	    # the other vars should be initialised to 0.0 so don't need to be defined here
-	    estimated_pose = Pose()
-	    estimated_pose.position.x = mean_x
-	    estimated_pose.position.y = mean_y
+	# the other vars should be initialised to 0.0 so don't need to be defined here
+	estimated_pose = Pose()
+	estimated_pose.position.x = mean_x
+	estimated_pose.position.y = mean_y
 
-	    estimated_pose.orientation.y = mean_qy
-       	    estimated_pose.orientation.w = mean_qw
+        estimated_pose.orientation.y = mean_qy
+       	estimated_pose.orientation.w = mean_qw
 
-       	    return estimated_pose
+       	return estimated_pose
         #return self.estimatedpose.pose.pose
 
 
