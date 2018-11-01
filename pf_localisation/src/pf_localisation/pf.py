@@ -78,7 +78,7 @@ class PFLocaliser(PFLocaliserBase):
 
 	    #weighted_poses.append([particle, 1.0/len(self.particlecloud.poses)])
             #resampled_poses = self.resample(weighted_poses, len(weighted_poses))
-	   n = len(weighted_poses)
+        n = len(weighted_poses)
 
 
         resampled_poses = self.resample(weighted_poses, n)
