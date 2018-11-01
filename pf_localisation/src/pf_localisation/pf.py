@@ -30,8 +30,8 @@ class PFLocaliser(PFLocaliserBase):
     def initialise_particle_cloud(self, initialpose):
         # Set particle cloud to initialpose plus noise  
         NB_PARTICLES_AROUND_INITIAL_P = 100
-        NB_PARTICLES_SPREAD = 100
-        SPREADING_VARIANCE = 20
+        NB_PARTICLES_SPREAD = 400
+        SPREADING_VARIANCE = 5
         new_particlecloud = PoseArray()
         noise_x = np.random.normal(0,initialpose.pose.covariance[0],NB_PARTICLES_AROUND_INITIAL_P)
         noise_y = np.random.normal(0,initialpose.pose.covariance[7],NB_PARTICLES_AROUND_INITIAL_P)
@@ -48,7 +48,7 @@ class PFLocaliser(PFLocaliserBase):
             new_particlecloud.poses.append(Pose(particle_pos, particle_quaternion))
 
         noise_x = np.random.normal(0,SPREADING_VARIANCE,NB_PARTICLES_SPREAD)
-        noise_y = np.random.normal(0,SPREADING_VARIANCE,NB_PARTICLES_SPREAD)
+        noise_y = np.random.normal(0,SPREADING_VARIANCE+3,NB_PARTICLES_SPREAD)
         noise_theta = np.random.normal(0,1,NB_PARTICLES_SPREAD)
         for ith_particule in range(NB_PARTICLES_SPREAD):
             initialpose_quaternion = [initialpose.pose.pose.orientation.x, initialpose.pose.pose.orientation.y, initialpose.pose.pose.orientation.z, initialpose.pose.pose.orientation.w]

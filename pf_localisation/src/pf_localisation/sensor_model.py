@@ -149,20 +149,20 @@ class SensorModel(object):
     
         # Part 2: short reading from unexpected obstacle (e.g., a person)
         if z < 0:
-            rospy.loginfo("if z < 0")
+            # rospy.loginfo("if z < 0")
             pz += ( self.z_short * self.lambda_short *
                     math.exp(-self.lambda_short*obs_range) )
     
         # Part 3: Failure to detect obstacle, reported as max-range
         if obs_range == self.scan_range_max:
-            rospy.loginfo("if obs_range == scan_range_max")
+            # rospy.loginfo("if obs_range == scan_range_max")
             pz += self.z_max * 1.0
     
         # Part 4: Random measurements
         if obs_range < self.scan_range_max:
-            rospy.loginfo("if z < 0")
+            # rospy.loginfo("if z < 0")
             pz += self.z_rand * 1.0 /self.scan_range_max
-        rospy.loginfo("pz: {}".format(pz))
+        # rospy.loginfo("pz: {}".format(pz))
         assert(pz <= 1.0)
         assert(pz >= 0.0)
         
