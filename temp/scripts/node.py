@@ -76,7 +76,6 @@ class ParticleFilterLocalisationNode(object):
         a filter predict step with odeometry followed by an update step using
         the latest laser.
         """
-	rospy.loginfo("HELLO")
 
         if self._initial_pose_received:
             t_odom = self._particle_filter.predict_from_odometry(odometry)
@@ -91,7 +90,6 @@ class ParticleFilterLocalisationNode(object):
         Laser received. Store a ref to the latest scan. If robot has moved
         much, republish the latest pose to update RViz
         """
-        rospy.loginfo("laser callback in node.py")
         self._latest_scan = scan
         if self._initial_pose_received:
             if  self._sufficientMovementDetected(self._particle_filter.estimatedpose):
