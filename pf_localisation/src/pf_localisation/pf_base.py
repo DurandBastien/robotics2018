@@ -12,7 +12,7 @@ from geometry_msgs.msg import (PoseWithCovarianceStamped, PoseArray,
                                Quaternion,  Transform,  TransformStamped )
 from tf.msg import tfMessage
 from tf import transformations
-from nav_msgs.msg import OccupancyGrid
+from nav_msgs.msg import OccupancyGrid, Odometry
 
 import math
 import random
