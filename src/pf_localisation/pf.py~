@@ -38,19 +38,22 @@ class PFLocaliser(PFLocaliserBase):
        
     def initialise_particle_cloud(self, initialpose):
         # Set particle cloud to initialpose plus noise  
-        NB_PARTICLES_AROUND_INITIAL_P = 100
-        NB_PARTICLES_SPREAD = 400
+        NB_PARTICLES_AROUND_INITIAL_P = 10
+        NB_PARTICLES_SPREAD = 100
         SPREADING_VARIANCE = 5
         new_particlecloud = PoseArray()
 
         particle_index = 0
+
+        noise_x = np.random.normal(0,initialpose.pose.covariance[0],NB_PARTICLES_AROUND_INITIAL_P)
+        noise_y = np.random.normal(0,initialpose.pose.covariance[7],NB_PARTICLES_AROUND_INITIAL_P)
+
         noise_theta = np.random.normal(0,initialpose.pose.covariance[35],NB_PARTICLES_AROUND_INITIAL_P)
         while particle_index < NB_PARTICLES_AROUND_INITIAL_P:
             particle_pos = Point(initialpose.pose.pose.position.x, initialpose.pose.pose.position.y, initialpose.pose.pose.position.z)
             particle_pos.x += np.random.normal(0,initialpose.pose.covariance[0])
             particle_pos.y += np.random.normal(0,initialpose.pose.covariance[7])
-            rospy.loginfo("First loop, x: {}, y: {}".format(particle_pos.x, particle_pos.y))
-            if self.in_map(particle_pos.x, particle_pos.y):
+            if self.in_map_3(particle_pos.x, particle_pos.y):
                 initialpose_quaternion = [initialpose.pose.pose.orientation.x, initialpose.pose.pose.orientation.y, initialpose.pose.pose.orientation.z, initialpose.pose.pose.orientation.w]
                 particle_theta = noise_theta[particle_index] * 360 + transformations.euler_from_quaternion(initialpose_quaternion)[2]
                 particle_theta = particle_theta % 360
@@ -60,13 +63,16 @@ class PFLocaliser(PFLocaliserBase):
                 particle_index = particle_index + 1
 
         particle_index = 0 
+
+        noise_x = np.random.normal(0,SPREADING_VARIANCE,NB_PARTICLES_SPREAD)
+        noise_y = np.random.normal(0,SPREADING_VARIANCE+3,NB_PARTICLES_SPREAD)
+
         noise_theta = np.random.normal(0,1,NB_PARTICLES_SPREAD)
         while particle_index < NB_PARTICLES_SPREAD:
             particle_pos = Point(0, 0, 0)
             particle_pos.x += np.random.normal(0,SPREADING_VARIANCE)
             particle_pos.y += np.random.normal(0,SPREADING_VARIANCE+3)
-            rospy.loginfo("First loop, x: {}, y: {}".format(particle_pos.x, particle_pos.y))
-            if self.in_map(particle_pos.x, particle_pos.y):
+            if self.in_map_3(particle_pos.x, particle_pos.y):
                 initialpose_quaternion = [initialpose.pose.pose.orientation.x, initialpose.pose.pose.orientation.y, initialpose.pose.pose.orientation.z, initialpose.pose.pose.orientation.w]
                 particle_theta = noise_theta[particle_index] * 360
                 quaternion_array = transformations.quaternion_from_euler(0, 0, particle_theta)
@@ -216,29 +222,62 @@ class PFLocaliser(PFLocaliserBase):
                     break
         return newParticles
 
+
     def in_map(self, x, y):
-        #check if the coordinates are inside the allowed area of the map
+        #Checks if x and y coordinates are inside the map
+        #By coverting x and y coordinates to position in the array,
+        #also taking into consideration the offset of the origin.
 
-        #check if the co-ordinates are inside the ranges of the map file
-        if (x > self.occupancy_map.info.resolution*self.occupancy_map.info.width/2.0) or (y > self.occupancy_map.info.resolution*self.occupancy_map.info.height/2.0):
+        #adjusting x and y based on how the map has been moved
+        new_x = (x - self.occupancy_map.info.origin.position.x)/0.05
+        new_y = (y - self.occupancy_map.info.origin.position.y)/0.05
+        #getting the location in the array based on x and y, and rounding it
+        i = (new_y)*self.occupancy_map.info.width + (new_x)
+        i = int(round(i, 0)) # int() doesn't round, just floors the number
+        
+        rospy.loginfo("x: {}, y: {}, i: {}, val: {}".format(x, y, i, self.occupancy_map.data[i]))
+        rospy.loginfo("new_x: {}, new_y: {}".format(new_x, new_y))
+        if self.occupancy_map.data[i] == -1:  
             return False
+        else:
+            return True
 
-        #the origin is set so it alligns with centre
+
+    def in_map_2(self, x, y):
+              
+        new_x = x/self.occupancy_map.info.resolution + self.occupancy_map.info.width/2.0
+        new_y = y/self.occupancy_map.info.resolution + self.occupancy_map.info.height/2.0
+        new_x = int(round(new_x))
+        new_y = int(round(new_x))
+        
+        i = (new_y)*self.occupancy_map.info.width + (new_x)
+
+        rospy.loginfo("in_map_2")
+        rospy.loginfo("x: {}, y: {}, i: {}, val: {}".format(x, y, i, self.occupancy_map.data[i]))
+        rospy.loginfo("new_x: {}, new_y: {}".format(new_x, new_y))
+        
+        if self.occupancy_map.data[i] == -1:  
+            return False
+        else:
+            return True
+
+
+    def in_map_3(self, x, y):
         map_origin_x = (self.occupancy_map.info.origin.position.x + (self.occupancy_map.info.width / 2.0) * self.occupancy_map.info.resolution )
         map_origin_y = (self.occupancy_map.info.origin.position.y + (self.occupancy_map.info.height / 2.0) * self.occupancy_map.info.resolution )
 
-        #covert the coordinates to non-negative system.
         new_x = (x - map_origin_x)/self.occupancy_map.info.resolution + self.occupancy_map.info.width/2.0
         new_y = (y - map_origin_y)/self.occupancy_map.info.resolution + self.occupancy_map.info.height/2.0
-        #array needs integers
-        new_x = int(new_x)
-        new_y = int(new_y)
-
-        #the location of the map in the array
+        new_x = int(round(new_x))
+        new_y = int(round(new_y))
+        
         i = (new_y)*self.occupancy_map.info.width + (new_x)
 
-        #return false if it's outside the allowed area or if a location is used/occupied
-        if self.occupancy_map.data[i] == -1 or self.occupancy_map.data[i] == 100:  
+        rospy.loginfo("in_map_3")
+        rospy.loginfo("x: {}, y: {}, i: {}".format(x, y, i))
+        rospy.loginfo("new_x: {}, new_y: {}, val: {}".format(new_x, new_y, self.occupancy_map.data[i]))
+        
+        if self.occupancy_map.data[i] == -1:  
             return False
         else:
             return True

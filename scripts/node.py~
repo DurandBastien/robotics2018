@@ -63,6 +63,9 @@ class ParticleFilterLocalisationNode(object):
                                                      self._odometry_callback,
                                                      queue_size=1)
 
+        rospy.loginfo("TEST: {}".format(self._particle_filter.in_map_2(-1.32391929626, -9.04284000397)))
+        rospy.loginfo("TEST: {}".format(self._particle_filter.in_map_3(-1.3239192962, -9.04284000397)))
+
 
     def _initial_pose_callback(self, pose):
         """ called when RViz sends a user supplied initial pose estimate """

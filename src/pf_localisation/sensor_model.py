@@ -91,38 +91,12 @@ class SensorModel(object):
                                          self.map_resolution,
                                          self.scan_range_max,
                                          self.map_data)
-        #rospy.loginfo('calc map range')
         r = self.scan_range_max
         if r <= self.scan_range_max:
             return r
         else:
             rospy.logwarn("calc_map_range giving oversized ranges!!")
             return self.scan_range_max
-
-    
-    #returns the weighted sum of closest non nan values in the scan array
-    #given the scanArray and the index of observed nan i
-    def interpolate_nans(self, scan, invalid_obs):
-        lower = []
-        higher = []
-        i = invalid_obs
-        j = 1
-        k = 1
-        while len(lower)<1:
-            val1 = scan[i-j]
-            if not math.isnan(val1):
-                lower.append(val1)
-            j+=1
-        while len(higher)<1:
-            val2 = scan[i+k]
-            if not math.isnan(val2):
-                higher.append(val2)
-            k+=1
-        #weighted sum proportional to the closest valid scan values in each direction
-        weighted_sum = (float(k)/float(j+k))*lower[0] + (float(j)/float(j+k))*higher[0]
-
-	return weighted_sum
-
         
     def get_weight(self, scan, pose):
         """
@@ -135,17 +109,13 @@ class SensorModel(object):
             | (double) likelihood weighting for this particle, given the map
               and laser readings
          """
-        #clean scan? what about interpolating?
     
         p = 1.0 # Sample weight (not a probability!)
                 
         for i, obs_bearing in self.reading_points:
             # For each range...
             obs_range = scan.ranges[i]
-            #TODO
-            if math.isnan(obs_range):
-                obs_range = self.interpolate_nans(scan.ranges,i)
-
+            
             # Laser reports max range as zero, so set it to range_max
             if (obs_range <= 0.0):
                 obs_range = self.scan_range_max 
@@ -153,12 +123,10 @@ class SensorModel(object):
             # Compute the range according to the map
             map_range = self.calc_map_range(pose.position.x, pose.position.y,
                                      getHeading(pose.orientation) + obs_bearing)
-
             pz = self.predict(obs_range, map_range)
             p += pz*pz*pz # Cube probability: reduce low-probability particles 
-            #print('this is p',p)
+            
         return p
-
     
 
     def predict(self, obs_range, map_range):
@@ -173,11 +141,9 @@ class SensorModel(object):
               data given the estimated map location
          """
         pz = 0.0
-        #rospy.loginfo('in predict function')
+    
         # Part 1: good, but noisy, hit
         z = obs_range - map_range
-        #rospy.loginfo(z)
-
         pz += ( self.z_hit *
                 math.exp(-(z * z) / (2 * self.sigma_hit * self.sigma_hit)) )
     
@@ -196,9 +162,8 @@ class SensorModel(object):
         if obs_range < self.scan_range_max:
             # rospy.loginfo("if z < 0")
             pz += self.z_rand * 1.0 /self.scan_range_max
-        #rospy.loginfo("pz: {}".format(pz))
-        
-	assert(pz <= 1.0)
+        # rospy.loginfo("pz: {}".format(pz))
+        assert(pz <= 1.0)
         assert(pz >= 0.0)
-        #rospy.loginfo('finished predict function')
+        
         return pz
