@@ -79,7 +79,6 @@ class ParticleFilterLocalisationNode(object):
         """
 
         if self._initial_pose_received:
-            exit()
             t_odom = self._particle_filter.predict_from_odometry(odometry)
             t_filter = self._particle_filter.update_filter(self._latest_scan)
             if t_odom + t_filter > 0.1:
