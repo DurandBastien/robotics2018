@@ -95,8 +95,34 @@ class SensorModel(object):
         if r <= self.scan_range_max:
             return r
         else:
-            rospy.logwarn("calc_map_range giving oversized ranges!!")
+            #rospy.logwarn("calc_map_range giving oversized ranges!!")
             return self.scan_range_max
+
+
+        
+    #returns the weighted sum of closest non nan values in the scan array
+    #given the scanArray and the index of observed nan i
+    def interpolate_nans(self, scan, invalid_obs):
+        lower = []
+        higher = []
+        i = invalid_obs
+        j = 1
+        k = 1
+        while len(lower)<1:
+            val1 = scan[i-j]
+            if not math.isnan(val1):
+                lower.append(val1)
+            j+=1
+        while len(higher)<1:
+            val2 = scan[i+k]
+            if not math.isnan(val2):
+                higher.append(val2)
+            k+=1
+        #weighted sum proportional to the closest valid scan values in each direction
+        weighted_sum = (float(k)/float(j+k))*lower[0] + (float(j)/float(j+k))*higher[0]
+
+	return weighted_sum
+
         
     def get_weight(self, scan, pose):
         """
@@ -115,6 +141,9 @@ class SensorModel(object):
         for i, obs_bearing in self.reading_points:
             # For each range...
             obs_range = scan.ranges[i]
+            # If this is a nan, interpolate the laser readings
+            if math.isnan(obs_range):
+                obs_range = self.interpolate_nans(scan.ranges,i)
             
             # Laser reports max range as zero, so set it to range_max
             if (obs_range <= 0.0):
