@@ -27,7 +27,6 @@ class ParticleFilterLocalisationNode(object):
     def __init__(self):
         # Minimum change (m/radians) before publishing new particle cloud and pose
         self._PUBLISH_DELTA = rospy.get_param("publish_delta", 0.1)  
-        rospy.loginfo("init hello")
         
         self._particle_filter = pf_localisation.pf.PFLocaliser()
 

@@ -91,7 +91,7 @@ class SensorModel(object):
                                          self.map_resolution,
                                          self.scan_range_max,
                                          self.map_data)
-        r = self.scan_range_max
+        # r = self.scan_range_max
         if r <= self.scan_range_max:
             return r
         else:
@@ -109,7 +109,7 @@ class SensorModel(object):
             | (double) likelihood weighting for this particle, given the map
               and laser readings
          """
-    
+        
         p = 1.0 # Sample weight (not a probability!)
                 
         for i, obs_bearing in self.reading_points:

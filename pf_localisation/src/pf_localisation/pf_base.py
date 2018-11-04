@@ -72,7 +72,6 @@ class PFLocaliserBase(object):
         self.sensor_model =  sensor_model.SensorModel()
 
     def initialise_particle_cloud(self, initialpose):
-        rospy.loginfo("is it calling this function??")
         """
         Called whenever an initialpose message is received (to change the
         starting location of the robot), or a new occupancy_map is received.
@@ -130,31 +129,6 @@ class PFLocaliserBase(object):
             | scan (sensor_msgs.msg.LaserScan): laser scan to use for update
          """
         raise NotImplementedError()
-
-            
-    """I've brought the below method over, it's just used inside update_particle_cloud.  Take no notice of it.  -ND"""
-    def resample(self, particles, n):
-        totalWeight = 0
-        for i in range(len(particles)):
-            totalWeight = totalWeight + particles[i][1]
-            rands = []
-        for i in range(n + 1):
-            rands.append(random.uniform(0.0, totalWeight))
-            sortedRands = sorted(rands)
-        counter = 0
-        rCounter = 0
-        output = []
-        lengthOfOutput = 0
-        sumSoFar = particles[0][1]
-        while (lengthOfOutput < n):
-            if(sortedRands[rCounter] < sumSoFar):
-                output.append(particles[counter])
-                rCounter = rCounter + 1
-                lengthOfOutput = lengthOfOutput + 1
-            else:
-                counter = counter + 1
-                sumSoFar = sumSoFar + particles[counter][1]
-        return output
 
 
     def estimate_pose(self):
@@ -303,6 +277,13 @@ class PFLocaliserBase(object):
     def set_map(self, occupancy_map):
         """ Set the map for localisation """
         self.occupancy_map = occupancy_map
+        self.free_cells = []
+        for counter, cell in enumerate(self.occupancy_map.data):
+            if(cell >= 0 and cell < 0.196):
+                x_pix = counter % 746
+                y_pix = (counter - x_pix)/803
+                self.free_cells.append([x_pix, y_pix])
+        self.free_cells = np.array(self.free_cells)
         self.sensor_model.set_map(occupancy_map)
         # Map has changed, so we should reinitialise the particle cloud
         rospy.loginfo("Particle filter got map. (Re)initialising.")
