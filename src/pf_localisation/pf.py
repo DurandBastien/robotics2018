@@ -23,11 +23,11 @@ class PFLocaliser(PFLocaliserBase):
         super(PFLocaliser, self).__init__()
         
         # Set motion model parameters
-        self.ODOM_ROTATION_NOISE = 1 # Odometry model rotation noise
-        self.ODOM_TRANSLATION_NOISE = 1 # Odometry model x axis (forward) noise
-        self.ODOM_DRIFT_NOISE = 1 # Odometry model y axis (side-to-side) noise        
+        self.ODOM_ROTATION_NOISE = 5 # Odometry model rotation noise
+        self.ODOM_TRANSLATION_NOISE = 0.04 # Odometry model x axis (forward) noise
+        self.ODOM_DRIFT_NOISE = 0.04 # Odometry model y axis (side-to-side) noise        
         # Sensor model parameters
-        self.NUMBER_PREDICTED_READINGS = 20     # Number of readings to predict
+        self.NUMBER_PREDICTED_READINGS = 80     # Number of readings to predict
 
         # self._stage_ros_pose_subscriber = rospy.Subscriber("/base_pose_ground_truth", Odometry,
         #                                           self.stage_pose_callback,
@@ -42,38 +42,21 @@ class PFLocaliser(PFLocaliserBase):
         NB_PARTICLES_SPREAD = 400
         SPREADING_VARIANCE = 5
         new_particlecloud = PoseArray()
-
-        particle_index = 0
+        noise_x = np.random.normal(0,initialpose.pose.covariance[0],NB_PARTICLES_AROUND_INITIAL_P)
+        noise_y = np.random.normal(0,initialpose.pose.covariance[7],NB_PARTICLES_AROUND_INITIAL_P)
         noise_theta = np.random.normal(0,initialpose.pose.covariance[35],NB_PARTICLES_AROUND_INITIAL_P)
-        while particle_index < NB_PARTICLES_AROUND_INITIAL_P:
+        for ith_particule in range(NB_PARTICLES_AROUND_INITIAL_P):
+            initialpose_quaternion = [initialpose.pose.pose.orientation.x, initialpose.pose.pose.orientation.y, initialpose.pose.pose.orientation.z, initialpose.pose.pose.orientation.w]
+            particle_theta = noise_theta[ith_particule] * 360 + transformations.euler_from_quaternion(initialpose_quaternion)[2]
+            particle_theta = particle_theta % 360
             particle_pos = Point(initialpose.pose.pose.position.x, initialpose.pose.pose.position.y, initialpose.pose.pose.position.z)
-            particle_pos.x += np.random.normal(0,initialpose.pose.covariance[0])
-            particle_pos.y += np.random.normal(0,initialpose.pose.covariance[7])
-            rospy.loginfo("First loop, x: {}, y: {}".format(particle_pos.x, particle_pos.y))
-            if self.in_map(particle_pos.x, particle_pos.y):
-                initialpose_quaternion = [initialpose.pose.pose.orientation.x, initialpose.pose.pose.orientation.y, initialpose.pose.pose.orientation.z, initialpose.pose.pose.orientation.w]
-                particle_theta = noise_theta[particle_index] * 360 + transformations.euler_from_quaternion(initialpose_quaternion)[2]
-                particle_theta = particle_theta % 360
-                quaternion_array = transformations.quaternion_from_euler(0, 0, particle_theta)
-                particle_quaternion = Quaternion(quaternion_array[0], quaternion_array[1], quaternion_array[2], quaternion_array[3])
-                new_particlecloud.poses.append(Pose(particle_pos, particle_quaternion))
-                particle_index = particle_index + 1
+            particle_pos.x += noise_x[ith_particule]
+            particle_pos.y += noise_y[ith_particule]
+            quaternion_array = transformations.quaternion_from_euler(0, 0, particle_theta)
+            particle_quaternion = Quaternion(quaternion_array[0], quaternion_array[1], quaternion_array[2], quaternion_array[3])
+            new_particlecloud.poses.append(Pose(particle_pos, particle_quaternion))
 
-        particle_index = 0 
-        noise_theta = np.random.normal(0,1,NB_PARTICLES_SPREAD)
-        while particle_index < NB_PARTICLES_SPREAD:
-            particle_pos = Point(0, 0, 0)
-            particle_pos.x += np.random.normal(0,SPREADING_VARIANCE)
-            particle_pos.y += np.random.normal(0,SPREADING_VARIANCE+3)
-            rospy.loginfo("First loop, x: {}, y: {}".format(particle_pos.x, particle_pos.y))
-            if self.in_map(particle_pos.x, particle_pos.y):
-                initialpose_quaternion = [initialpose.pose.pose.orientation.x, initialpose.pose.pose.orientation.y, initialpose.pose.pose.orientation.z, initialpose.pose.pose.orientation.w]
-                particle_theta = noise_theta[particle_index] * 360
-                quaternion_array = transformations.quaternion_from_euler(0, 0, particle_theta)
-                particle_quaternion = Quaternion(quaternion_array[0], quaternion_array[1], quaternion_array[2], quaternion_array[3])
-                new_particlecloud.poses.append(Pose(particle_pos, particle_quaternion))
-                particle_index = particle_index + 1
-                
+        self.add_random_particle_distribution(1, NB_PARTICLES_SPREAD, new_particlecloud)
         return new_particlecloud
         # return self.particlecloud
  
@@ -88,38 +71,30 @@ class PFLocaliser(PFLocaliserBase):
             weight_sum += weight
 
         #normalisation
-        for counter, pose in enumerate(weighted_poses):
-            weighted_poses[counter][1] = pose[1]/weight_sum
+        # for counter, pose in enumerate(weighted_poses):
+        #     weighted_poses[counter][1] = pose[1]/weight_sum
 
-	    #weighted_poses.append([particle, 1.0/len(self.particlecloud.poses)])
-            #resampled_poses = self.resample(weighted_poses, len(weighted_poses))
-        n = len(weighted_poses) - 100
-
-        random.shuffle(weighted_poses)
-        # resampled_poses = self.resample(weighted_poses, n)
-        resampled_poses = self.resample_particles(weighted_poses, n)
+        # n = len(weighted_poses) - 100
+        n = 400
+        # random.shuffle(weighted_poses)
+        resampled_poses = self.resample(weighted_poses, n)
 
         resampled_cloud = PoseArray()
         for particle in resampled_poses:
-            resampled_cloud.poses.append(deepcopy(particle))
+            new_particle = deepcopy(particle[0])
+            # sample gaussian noise with sigma = noise parameters, and mean = location
+            new_particle.position.x = random.gauss(new_particle.position.x,self.ODOM_TRANSLATION_NOISE)
+            new_particle.position.y = random.gauss(new_particle.position.y,self.ODOM_DRIFT_NOISE)
+            # sample gaussian noise from the rotation parameter
+            # but does that make mathematical sense? What are the rotation noise units?
+            new_particle.orientation = rotateQuaternion(new_particle.orientation,(math.radians(random.uniform(-5, 5))))
+            resampled_cloud.poses.append(new_particle)
 
-        noise_x = np.random.normal(0,5,100)
-        noise_y = np.random.normal(0,5+3,100)
-        noise_theta = np.random.normal(0,1,100)
-        for ith_particule in range(100):
-            initialpose_quaternion = [self.estimatedpose.pose.pose.orientation.x, self.estimatedpose.pose.pose.orientation.y, self.estimatedpose.pose.pose.orientation.z, self.estimatedpose.pose.pose.orientation.w]
-            particle_theta = noise_theta[ith_particule] * 360
-            particle_pos = Point(0, 0, 0)
-            particle_pos.x += noise_x[ith_particule]
-            particle_pos.y += noise_y[ith_particule]
-            quaternion_array = transformations.quaternion_from_euler(0, 0, particle_theta)
-            particle_quaternion = Quaternion(quaternion_array[0], quaternion_array[1], quaternion_array[2], quaternion_array[3])
-            resampled_cloud.poses.append(Pose(particle_pos, particle_quaternion))
-
+        self.add_random_particle_distribution(1, 30, resampled_cloud)
         self.particlecloud = resampled_cloud
 	 
 
-    def estimate_pose(self):
+    """def estimate_pose(self):
         # Create new estimated pose, given particle cloud
         # E.g. just average the location and orientation values of each of
         # the particles and return this.
@@ -133,39 +108,107 @@ class PFLocaliser(PFLocaliserBase):
     	# averaging quanternions only makes sense if their orientations are similar. If they're not, averages are
     	# meaningless and require multiple representations (from paper below).
     	# http://www.cs.unc.edu/techreports/01-029.pdf
-
     	x,y,qz,qw = 0,0,0,0
-
     	for item in self.particlecloud.poses:
     	    # z should always be 0
     	    x += item.position.x
     	    y += item.position.y
-
     	    # this should need yaw only
     	    qz += item.orientation.z
     	    qw += item.orientation.w
-
-
     	n = len(self.particlecloud.poses)
-
     	# calculate mean values
     	mean_x = x/n
         mean_y = y/n
-
         mean_qz = qz/n
     	mean_qw = qw/n
-
     	# the other vars should be initialised to 0.0 so don't need to be defined here
     	estimated_pose = Pose()
     	estimated_pose.position.x = mean_x
-    	estimated_pose.position.y = mean_y
-        
+    	estimated_pose.position.y = mean_y        
         # changed the mean to the z dim
         estimated_pose.orientation.z = mean_qz
        	estimated_pose.orientation.w = mean_qw
-
        	return estimated_pose
-        # return self.estimatedpose.pose.pose
+        # return self.estimatedpose.pose.pose"""
+
+
+    #Each item in the list points should be a 4-tuple (x, y, qz, qw)
+    #OR a 4-tuple (x, y, qz, qw, weight)
+    def estimate_pose(self):
+        points = []
+        for item in self.particlecloud.poses:
+            points.append((item.position.x, item.position.y, item.orientation.z, item.orientation.w))
+        clusters = self.dbscan(points, 1.5, 1) #PARAMETERS SELECTED ARBITRARILY, MUST BE REFINED.
+        maxSize = 0
+        biggestCluster = []
+        for cluster in clusters:
+            if self.weightOfCluster(cluster) > maxSize:
+                maxSize = self.weightOfCluster(cluster)
+                biggestCluster = cluster
+        x = 0
+        y = 0
+        qz = 0
+        qw = 0
+        #print(biggestCluster)
+        for point in biggestCluster:
+            x += (point[0] * self.weightOfPoint(point))
+            y += (point[1] * self.weightOfPoint(point))
+            qz += (point[2] * self.weightOfPoint(point))
+            qw += (point[3] * self.weightOfPoint(point))
+        estimated_pose = Pose()
+    	estimated_pose.position.x = x/maxSize
+    	estimated_pose.position.y = y/maxSize      
+        estimated_pose.orientation.z = qz/maxSize
+       	estimated_pose.orientation.w = qw/maxSize
+       	return estimated_pose
+
+    def weightOfCluster(self, cluster):
+        weight = 0
+        for point in cluster:
+            weight += self.weightOfPoint(point)
+        return weight
+
+    def weightOfPoint(self, point):
+        return 1 #If using weighted particles, comment out this line instead of the next line.
+        #return point[4]
+
+    #Runs a DBSCAN to find clusters in the points.
+    #Parameters: points = list of tuples (x, y) representing the points.
+        #radius = maximum distance at which points are considered nearby.
+        #minPts = minimum number of points adjacent to a point for it to be a core point.
+    def dbscan(self, points, radius, minPts):
+        corepoints = []
+        for point in points:
+            if(self.getNumberNearby(point, points, radius) >= minPts):
+                corepoints.append(point)
+        clusters = []
+        while(len(corepoints) > 0):
+            clusters.append(self.createCluster(points, corepoints, corepoints[0], radius))
+        return clusters
+
+    def createCluster(self, points, corePts, starter, radius):
+        corePts.remove(starter)
+        points.remove(starter)          
+        output = []
+        output.append(starter)
+        for point in points:
+            d = self.distance(point, starter)
+            if (point in corePts) and (d < radius):
+                output = output + self.createCluster(points, corePts, point, radius)
+            elif (d < radius) and not (point in output):
+                output.append(point)
+        return output                 
+    
+    def getNumberNearby(self, point, otherPoints, radius):
+        counter = 0
+        for pointB in otherPoints:
+            if(self.distance(pointB, point) < radius):
+                counter += 1
+        return counter - 1 #subtract 1 so as not to count the particle itself lol.
+
+    def distance(self, pointA, pointB):
+        return math.sqrt((pointA[0] - pointB[0]) ** 2 + (pointA[1] - pointB[1]) ** 2)
 
 
 
@@ -193,28 +236,15 @@ class PFLocaliser(PFLocaliserBase):
                     sumSoFar = sumSoFar + particles[counter][1]
         return output
 
-    def resample_particles(self, particles, n):
-        """ Resample the particles according to the new particle weights.
-            The weights stored with each particle should define the probability that a particular
-            particle is selected in the resampling step.  You may want to make use of the given helper
-            function draw_random_sample.
-        """
-        # make sure the distribution is normalized
-        # self.normalize_particles()
-
-        newParticles = []
-        for i in range(n):
-            # resample the same # of particles
-            choice = np.random.random_sample()
-            # all the particle weights sum to 1
-            csum = 0 # cumulative sum
-            for particle in particles:
-                csum += particle[1]
-                if csum >= choice:
-                    # if the random choice fell within the particle's weight
-                    newParticles.append(particle[0])
-                    break
-        return newParticles
+    def add_random_particle_distribution(self, orientation_noise, nb_particles, particles_cloud):
+        noise_theta = np.random.normal(0, orientation_noise, nb_particles)
+        chosen_cells = self.free_cells[np.random.choice(self.free_cells.shape[0], nb_particles), :]
+        for ith_particle,cell in enumerate(chosen_cells):
+            particle_pos = Point(-18.65 + cell[0]*0.05, -20.075 + cell[1]*0.054, 0)
+            particle_theta = (noise_theta[ith_particle] * 360) % 360
+            quaternion_array = transformations.quaternion_from_euler(0, 0, particle_theta)
+            particle_quaternion = Quaternion(quaternion_array[0], quaternion_array[1], quaternion_array[2], quaternion_array[3])
+            particles_cloud.poses.append(Pose(particle_pos, particle_quaternion))
 
     def in_map(self, x, y):
         #check if the coordinates are inside the allowed area of the map

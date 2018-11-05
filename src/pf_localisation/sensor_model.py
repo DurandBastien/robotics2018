@@ -91,12 +91,53 @@ class SensorModel(object):
                                          self.map_resolution,
                                          self.scan_range_max,
                                          self.map_data)
-        r = self.scan_range_max
+        # r = self.scan_range_max
         if r <= self.scan_range_max:
             return r
         else:
-            rospy.logwarn("calc_map_range giving oversized ranges!!")
+            #rospy.logwarn("calc_map_range giving oversized ranges!!")
             return self.scan_range_max
+
+
+        
+    #returns the weighted sum of closest non nan values in the scan array
+    #given the scanArray and the index of observed nan i
+    def interpolate_nans(self, scan, invalid_obs):
+        lower = []
+        higher = []
+        i = invalid_obs
+        #rospy.loginfo('this is i')
+        #rospy.loginfo(i)
+        #rospy.loginfo(scan)
+        j = 1
+        k = 1
+
+        while len(lower)<1:
+            if i-j>=0:
+                val1 = scan[i-j]
+            else:
+                # index is out of range, set laser value to scan range max
+                val1 = self.scan_range_max
+            if not math.isnan(val1):
+                lower.append(val1)
+            j+=1
+        while len(higher)<1:
+            if i+k < len(scan):
+                val2 = scan[i+k]
+            else:
+                val2 = self.scan_range_max
+            if not math.isnan(val2):
+                higher.append(val2)
+            k+=1
+        # if either value is out of range, just replace the nan with scan range max
+        if lower[0] == self.scan_range_max or higher[0] == self.scan_range_max:
+            weighted_sum = self.scan_range_max
+        else:
+            #weighted sum proportional to the closest valid scan values in each direction
+            weighted_sum = (float(k)/float(j+k))*lower[0] + (float(j)/float(j+k))*higher[0]
+
+	return weighted_sum
+
         
     def get_weight(self, scan, pose):
         """
@@ -109,12 +150,15 @@ class SensorModel(object):
             | (double) likelihood weighting for this particle, given the map
               and laser readings
          """
-    
+        
         p = 1.0 # Sample weight (not a probability!)
                 
         for i, obs_bearing in self.reading_points:
             # For each range...
             obs_range = scan.ranges[i]
+            # If this is a nan, interpolate the laser readings
+            if math.isnan(obs_range):
+                obs_range = self.scan_range_max  # interpolate_nans(scan.ranges,i)
             
             # Laser reports max range as zero, so set it to range_max
             if (obs_range <= 0.0):

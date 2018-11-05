@@ -23,9 +23,10 @@ class PFLocaliser(PFLocaliserBase):
         super(PFLocaliser, self).__init__()
         
         # Set motion model parameters
-        self.ODOM_ROTATION_NOISE = 2 # Odometry model rotation noise
-        self.ODOM_TRANSLATION_NOISE = 2 # Odometry model x axis (forward) noise
-        self.ODOM_DRIFT_NOISE = 2 # Odometry model y axis (side-to-side) noise        
+        self.ODOM_ROTATION_NOISE = 1 # Odometry model rotation noise
+        self.ODOM_TRANSLATION_NOISE = 1 # Odometry model x axis (forward) noise
+        self.ODOM_DRIFT_NOISE = 1 # Odometry model y axis (side-to-side) noise        
+
         # Sensor model parameters
         self.NUMBER_PREDICTED_READINGS = 20     # Number of readings to predict
 
@@ -85,10 +86,10 @@ class PFLocaliser(PFLocaliserBase):
         n_random = 0
         if(weight_max < self.ADAPTATIVE_THRESHOLD):
             n_random = int(self.ADAPTATIVE_RATIO * self.NUMBER_PARTICLES)
-        elif(weight_max < 11):
-            n_random = 50
-        elif(weight_max < 15):
-            n_random = 25
+        # elif(weight_max < 11):
+        #     n_random = 50
+        # elif(weight_max < 15):
+        #     n_random = 25
         n_resampled = self.NUMBER_PARTICLES - n_random
         # random.shuffle(weighted_poses)
         resampled_poses = self.resample(weighted_poses, n_resampled)
@@ -97,46 +98,138 @@ class PFLocaliser(PFLocaliserBase):
         for particle in resampled_poses:
             resampled_cloud.poses.append(deepcopy(particle[0]))
         self.add_random_particle_distribution(1, n_random, resampled_cloud)
+        #     new_particle = deepcopy(particle[0])
+        #     # sample gaussian noise with sigma = noise parameters, and mean = location
+        #     new_particle.position.x = random.gauss(new_particle.position.x,self.ODOM_TRANSLATION_NOISE)
+        #     new_particle.position.y = random.gauss(new_particle.position.y,self.ODOM_DRIFT_NOISE)
+        #     # sample gaussian noise from the rotation parameter
+        #     # but does that make mathematical sense? What are the rotation noise units?
+        #     new_particle.orientation = rotateQuaternion(new_particle.orientation,(math.radians(random.gauss(0,self.ODOM_ROTATION_NOISE))))
+        #     resampled_cloud.poses.append(new_particle)
+
+        # self.add_random_particle_distribution(1, 20, resampled_cloud)
         self.particlecloud = resampled_cloud
 	 
 
-    def estimate_pose(self):
+    """def estimate_pose(self):
         # Create new estimated pose, given particle cloud
         # E.g. just average the location and orientation values of each of
         # the particles and return this.
+<<<<<<< HEAD
 
+=======
+        
+
+    	# Better approximations could be made by doing some simple clustering,
+    	# e.g. taking the average location of half the particles after 
+    	# throwing away any which are outliers
+    	# takes input in the form of a ROS PoseArray
+    	# currently averaging values
+    	# averaging quanternions only makes sense if their orientations are similar. If they're not, averages are
+    	# meaningless and require multiple representations (from paper below).
+    	# http://www.cs.unc.edu/techreports/01-029.pdf
+>>>>>>> 7dba0ef2a6af4206a27cd9a50a61b2929e30d041
     	x,y,qz,qw = 0,0,0,0
-
     	for item in self.particlecloud.poses:
     	    # z should always be 0
     	    x += item.position.x
     	    y += item.position.y
-
     	    # this should need yaw only
     	    qz += item.orientation.z
     	    qw += item.orientation.w
-
-
     	n = len(self.particlecloud.poses)
-
     	# calculate mean values
     	mean_x = x/n
         mean_y = y/n
-
         mean_qz = qz/n
     	mean_qw = qw/n
-
     	# the other vars should be initialised to 0.0 so don't need to be defined here
     	estimated_pose = Pose()
     	estimated_pose.position.x = mean_x
-    	estimated_pose.position.y = mean_y
-        
+    	estimated_pose.position.y = mean_y        
         # changed the mean to the z dim
         estimated_pose.orientation.z = mean_qz
        	estimated_pose.orientation.w = mean_qw
-
        	return estimated_pose
-        # return self.estimatedpose.pose.pose
+        # return self.estimatedpose.pose.pose"""
+
+
+    #Each item in the list points should be a 4-tuple (x, y, qz, qw)
+    #OR a 4-tuple (x, y, qz, qw, weight)
+    def estimate_pose(self):
+        points = []
+        for item in self.particlecloud.poses:
+            points.append((item.position.x, item.position.y, item.orientation.z, item.orientation.w))
+        clusters = self.dbscan(points, 1.5, 1) #PARAMETERS SELECTED ARBITRARILY, MUST BE REFINED.
+        maxSize = 0
+        biggestCluster = []
+        for cluster in clusters:
+            if self.weightOfCluster(cluster) > maxSize:
+                maxSize = self.weightOfCluster(cluster)
+                biggestCluster = cluster
+        x = 0
+        y = 0
+        qz = 0
+        qw = 0
+        #print(biggestCluster)
+        for point in biggestCluster:
+            x += (point[0] * self.weightOfPoint(point))
+            y += (point[1] * self.weightOfPoint(point))
+            qz += (point[2] * self.weightOfPoint(point))
+            qw += (point[3] * self.weightOfPoint(point))
+        estimated_pose = Pose()
+    	estimated_pose.position.x = x/maxSize
+    	estimated_pose.position.y = y/maxSize      
+        estimated_pose.orientation.z = qz/maxSize
+       	estimated_pose.orientation.w = qw/maxSize
+       	return estimated_pose
+
+    def weightOfCluster(self, cluster):
+        weight = 0
+        for point in cluster:
+            weight += self.weightOfPoint(point)
+        return weight
+
+    def weightOfPoint(self, point):
+        return 1 #If using weighted particles, comment out this line instead of the next line.
+        #return point[4]
+
+    #Runs a DBSCAN to find clusters in the points.
+    #Parameters: points = list of tuples (x, y) representing the points.
+        #radius = maximum distance at which points are considered nearby.
+        #minPts = minimum number of points adjacent to a point for it to be a core point.
+    def dbscan(self, points, radius, minPts):
+        corepoints = []
+        for point in points:
+            if(self.getNumberNearby(point, points, radius) >= minPts):
+                corepoints.append(point)
+        clusters = []
+        while(len(corepoints) > 0):
+            clusters.append(self.createCluster(points, corepoints, corepoints[0], radius))
+        return clusters
+
+    def createCluster(self, points, corePts, starter, radius):
+        corePts.remove(starter)
+        points.remove(starter)          
+        output = []
+        output.append(starter)
+        for point in points:
+            d = self.distance(point, starter)
+            if (point in corePts) and (d < radius):
+                output = output + self.createCluster(points, corePts, point, radius)
+            elif (d < radius) and not (point in output):
+                output.append(point)
+        return output                 
+    
+    def getNumberNearby(self, point, otherPoints, radius):
+        counter = 0
+        for pointB in otherPoints:
+            if(self.distance(pointB, point) < radius):
+                counter += 1
+        return counter - 1 #subtract 1 so as not to count the particle itself lol.
+
+    def distance(self, pointA, pointB):
+        return math.sqrt((pointA[0] - pointB[0]) ** 2 + (pointA[1] - pointB[1]) ** 2)
 
 
 
