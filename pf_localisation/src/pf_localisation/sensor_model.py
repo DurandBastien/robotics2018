@@ -91,6 +91,7 @@ class SensorModel(object):
                                          self.map_resolution,
                                          self.scan_range_max,
                                          self.map_data)
+        # r = self.scan_range_max
         if r <= self.scan_range_max:
             return r
         else:
@@ -105,20 +106,35 @@ class SensorModel(object):
         lower = []
         higher = []
         i = invalid_obs
+        #rospy.loginfo('this is i')
+        #rospy.loginfo(i)
+        #rospy.loginfo(scan)
         j = 1
         k = 1
+
         while len(lower)<1:
-            val1 = scan[i-j]
+            if i-j>=0:
+                val1 = scan[i-j]
+            else:
+                # index is out of range, set laser value to scan range max
+                val1 = self.scan_range_max
             if not math.isnan(val1):
                 lower.append(val1)
             j+=1
         while len(higher)<1:
-            val2 = scan[i+k]
+            if i+k < len(scan):
+                val2 = scan[i+k]
+            else:
+                val2 = self.scan_range_max
             if not math.isnan(val2):
                 higher.append(val2)
             k+=1
-        #weighted sum proportional to the closest valid scan values in each direction
-        weighted_sum = (float(k)/float(j+k))*lower[0] + (float(j)/float(j+k))*higher[0]
+        # if either value is out of range, just replace the nan with scan range max
+        if lower[0] == self.scan_range_max or higher[0] == self.scan_range_max:
+            weighted_sum = self.scan_range_max
+        else:
+            #weighted sum proportional to the closest valid scan values in each direction
+            weighted_sum = (float(k)/float(j+k))*lower[0] + (float(j)/float(j+k))*higher[0]
 
 	return weighted_sum
 
@@ -142,7 +158,7 @@ class SensorModel(object):
             obs_range = scan.ranges[i]
             # If this is a nan, interpolate the laser readings
             if math.isnan(obs_range):
-                obs_range = self.interpolate_nans(scan.ranges,i)
+                obs_range = self.scan_range_max  # interpolate_nans(scan.ranges,i)
             
             # Laser reports max range as zero, so set it to range_max
             if (obs_range <= 0.0):
