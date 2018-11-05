@@ -266,7 +266,6 @@ class PFLocaliserBase(object):
     def set_initial_pose(self, pose):
         """ Initialise filter with start pose """
         self.estimatedpose.pose = pose.pose	
-        a = self.estimatedpose.pose.pose.position
         # Estimated pose has been set, so we should now reinitialise the 
         # particle cloud around it
         rospy.loginfo("Got pose. Calling initialise_particle_cloud().")
@@ -277,11 +276,12 @@ class PFLocaliserBase(object):
     def set_map(self, occupancy_map):
         """ Set the map for localisation """
         self.occupancy_map = occupancy_map
+        # The cells the robot can move in are stored in a np-array
         self.free_cells = []
-        for counter, cell in enumerate(self.occupancy_map.data):
-            if(cell >= 0 and cell < 0.196):
-                x_pix = counter % 746
-                y_pix = (counter - x_pix)/803
+        for counter, cell_prob in enumerate(self.occupancy_map.data):
+            if(cell_prob >= 0 and cell_prob < 0.196):
+                x_pix = counter % self.occupancy_map.info.width
+                y_pix = (counter - x_pix) / self.occupancy_map.info.height
                 self.free_cells.append([x_pix, y_pix])
         self.free_cells = np.array(self.free_cells)
         self.sensor_model.set_map(occupancy_map)

@@ -91,7 +91,6 @@ class SensorModel(object):
                                          self.map_resolution,
                                          self.scan_range_max,
                                          self.map_data)
-        # r = self.scan_range_max
         if r <= self.scan_range_max:
             return r
         else:

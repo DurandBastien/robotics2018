@@ -23,11 +23,16 @@ class PFLocaliser(PFLocaliserBase):
         super(PFLocaliser, self).__init__()
         
         # Set motion model parameters
-        self.ODOM_ROTATION_NOISE = 1 # Odometry model rotation noise
-        self.ODOM_TRANSLATION_NOISE = 1 # Odometry model x axis (forward) noise
-        self.ODOM_DRIFT_NOISE = 1 # Odometry model y axis (side-to-side) noise        
+        self.ODOM_ROTATION_NOISE = 2 # Odometry model rotation noise
+        self.ODOM_TRANSLATION_NOISE = 2 # Odometry model x axis (forward) noise
+        self.ODOM_DRIFT_NOISE = 2 # Odometry model y axis (side-to-side) noise        
         # Sensor model parameters
         self.NUMBER_PREDICTED_READINGS = 20     # Number of readings to predict
+
+        self.NUMBER_PARTICLES = 500
+
+        self.ADAPTATIVE_RATIO = float(1)/5
+        self.ADAPTATIVE_THRESHOLD = 9
 
         # self._stage_ros_pose_subscriber = rospy.Subscriber("/base_pose_ground_truth", Odometry,
         #                                           self.stage_pose_callback,
@@ -39,8 +44,8 @@ class PFLocaliser(PFLocaliserBase):
     def initialise_particle_cloud(self, initialpose):
         # Set particle cloud to initialpose plus noise  
         NB_PARTICLES_AROUND_INITIAL_P = 100
-        NB_PARTICLES_SPREAD = 400
-        SPREADING_VARIANCE = 5
+        # NB_PARTICLES_SPREAD = 400
+        # SPREADING_VARIANCE = 5
         new_particlecloud = PoseArray()
         noise_x = np.random.normal(0,initialpose.pose.covariance[0],NB_PARTICLES_AROUND_INITIAL_P)
         noise_y = np.random.normal(0,initialpose.pose.covariance[7],NB_PARTICLES_AROUND_INITIAL_P)
@@ -56,7 +61,7 @@ class PFLocaliser(PFLocaliserBase):
             particle_quaternion = Quaternion(quaternion_array[0], quaternion_array[1], quaternion_array[2], quaternion_array[3])
             new_particlecloud.poses.append(Pose(particle_pos, particle_quaternion))
 
-        self.add_random_particle_distribution(1, NB_PARTICLES_SPREAD, new_particlecloud)
+        # self.add_random_particle_distribution(1, NB_PARTICLES_SPREAD, new_particlecloud)
         return new_particlecloud
         # return self.particlecloud
  
@@ -65,25 +70,33 @@ class PFLocaliser(PFLocaliserBase):
         # Update particlecloud, given map and laser scan
         weighted_poses = []
         weight_sum = 0
+        weight_max = 0
         for particle in self.particlecloud.poses:
             weight = self.sensor_model.get_weight(scan, particle)
             weighted_poses.append([particle, weight])
             weight_sum += weight
-
+            if(weight > weight_max):
+                weight_max = weight
+        rospy.loginfo(weight_max)
         #normalisation
         # for counter, pose in enumerate(weighted_poses):
         #     weighted_poses[counter][1] = pose[1]/weight_sum
 
-        # n = len(weighted_poses) - 100
-        n = 400
+        n_random = 0
+        if(weight_max < self.ADAPTATIVE_THRESHOLD):
+            n_random = int(self.ADAPTATIVE_RATIO * self.NUMBER_PARTICLES)
+        elif(weight_max < 11):
+            n_random = 50
+        elif(weight_max < 15):
+            n_random = 25
+        n_resampled = self.NUMBER_PARTICLES - n_random
         # random.shuffle(weighted_poses)
-        resampled_poses = self.resample(weighted_poses, n)
+        resampled_poses = self.resample(weighted_poses, n_resampled)
 
         resampled_cloud = PoseArray()
         for particle in resampled_poses:
             resampled_cloud.poses.append(deepcopy(particle[0]))
-
-        self.add_random_particle_distribution(1, 100, resampled_cloud)
+        self.add_random_particle_distribution(1, n_random, resampled_cloud)
         self.particlecloud = resampled_cloud
 	 
 
@@ -91,16 +104,6 @@ class PFLocaliser(PFLocaliserBase):
         # Create new estimated pose, given particle cloud
         # E.g. just average the location and orientation values of each of
         # the particles and return this.
-        
-
-    	# Better approximations could be made by doing some simple clustering,
-    	# e.g. taking the average location of half the particles after 
-    	# throwing away any which are outliers
-    	# takes input in the form of a ROS PoseArray
-    	# currently averaging values
-    	# averaging quanternions only makes sense if their orientations are similar. If they're not, averages are
-    	# meaningless and require multiple representations (from paper below).
-    	# http://www.cs.unc.edu/techreports/01-029.pdf
 
     	x,y,qz,qw = 0,0,0,0
 
@@ -162,10 +165,12 @@ class PFLocaliser(PFLocaliserBase):
         return output
 
     def add_random_particle_distribution(self, orientation_noise, nb_particles, particles_cloud):
+        map_info = self.occupancy_map.info
         noise_theta = np.random.normal(0, orientation_noise, nb_particles)
         chosen_cells = self.free_cells[np.random.choice(self.free_cells.shape[0], nb_particles), :]
         for ith_particle,cell in enumerate(chosen_cells):
-            particle_pos = Point(-18.65 + cell[0]*0.05, -20.075 + cell[1]*0.054, 0)
+            particle_pos = Point(cell[0]*map_info.resolution + map_info.origin.position.x, cell[1]*(map_info.resolution + 0.004) + map_info.origin.position.y, 0)
+            # particle_pos = Point(-18.65 + cell[0]*0.05, -20.075 + cell[1]*0.054, 0)
             particle_theta = (noise_theta[ith_particle] * 360) % 360
             quaternion_array = transformations.quaternion_from_euler(0, 0, particle_theta)
             particle_quaternion = Quaternion(quaternion_array[0], quaternion_array[1], quaternion_array[2], quaternion_array[3])
