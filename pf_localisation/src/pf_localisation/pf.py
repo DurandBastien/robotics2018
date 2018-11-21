@@ -23,17 +23,28 @@ class PFLocaliser(PFLocaliserBase):
         super(PFLocaliser, self).__init__()
         
         # Set motion model parameters
+<<<<<<< HEAD
         self.ODOM_ROTATION_NOISE = 0.1 # Odometry model rotation noise
         self.ODOM_TRANSLATION_NOISE = 0.1 # Odometry model x axis (forward) noise
         self.ODOM_DRIFT_NOISE = 0.1 # Odometry model y axis (side-to-side) noise        
+=======
+        self.ODOM_ROTATION_NOISE = 1 # Odometry model rotation noise
+        self.ODOM_TRANSLATION_NOISE = 0.05 # Odometry model x axis (forward) noise
+        self.ODOM_DRIFT_NOISE = 0.05 # Odometry model y axis (side-to-side) noise        
+>>>>>>> 7ee58835fd8261923f04748cd68a153b73d7a946
 
         # Sensor model parameters
         self.NUMBER_PREDICTED_READINGS = 20     # Number of readings to predict
 
-        self.NUMBER_PARTICLES = 500
+        self.NUMBER_PARTICLES = 100
 
+<<<<<<< HEAD
         self.ADAPTATIVE_RATIO = float(2)/5
         self.ADAPTATIVE_THRESHOLD = 8.5
+=======
+        self.ADAPTATIVE_RATIO = float(1)/10
+        self.ADAPTATIVE_THRESHOLD = 12
+>>>>>>> 7ee58835fd8261923f04748cd68a153b73d7a946
 
         # self._stage_ros_pose_subscriber = rospy.Subscriber("/base_pose_ground_truth", Odometry,
         #                                           self.stage_pose_callback,
@@ -44,9 +55,10 @@ class PFLocaliser(PFLocaliserBase):
        
     def initialise_particle_cloud(self, initialpose):
         # Set particle cloud to initialpose plus noise  
-        NB_PARTICLES_AROUND_INITIAL_P = 100
-        # NB_PARTICLES_SPREAD = 400
-        # SPREADING_VARIANCE = 5
+        NB_PARTICLES_AROUND_INITIAL_P = 10
+        NB_PARTICLES_SPREAD = 300	
+        SPREADING_VARIANCE = 5
+
         new_particlecloud = PoseArray()
         noise_x = np.random.normal(0,initialpose.pose.covariance[0],NB_PARTICLES_AROUND_INITIAL_P)
         noise_y = np.random.normal(0,initialpose.pose.covariance[7],NB_PARTICLES_AROUND_INITIAL_P)
@@ -61,6 +73,8 @@ class PFLocaliser(PFLocaliserBase):
             quaternion_array = transformations.quaternion_from_euler(0, 0, particle_theta)
             particle_quaternion = Quaternion(quaternion_array[0], quaternion_array[1], quaternion_array[2], quaternion_array[3])
             new_particlecloud.poses.append(Pose(particle_pos, particle_quaternion))
+	
+	self.add_random_particle_distribution(1, NB_PARTICLES_SPREAD, new_particlecloud)
 
         # self.add_random_particle_distribution(1, NB_PARTICLES_SPREAD, new_particlecloud)
         return new_particlecloud
@@ -78,7 +92,7 @@ class PFLocaliser(PFLocaliserBase):
             weight_sum += weight
             if(weight > weight_max):
                 weight_max = weight
-        rospy.loginfo(weight_max)
+        #rospy.loginfo(weight_max)
         #normalisation
         # for counter, pose in enumerate(weighted_poses):
         #     weighted_poses[counter][1] = pose[1]/weight_sum
@@ -96,62 +110,19 @@ class PFLocaliser(PFLocaliserBase):
 
         resampled_cloud = PoseArray()
         for particle in resampled_poses:
-            resampled_cloud.poses.append(deepcopy(particle[0]))
+             new_particle = deepcopy(particle[0])
+             # sample gaussian noise with sigma = noise parameters, and mean = location
+             new_particle.position.x = random.gauss(new_particle.position.x,self.ODOM_TRANSLATION_NOISE)
+             new_particle.position.y = random.gauss(new_particle.position.y,self.ODOM_DRIFT_NOISE)
+             # sample gaussian noise from the rotation parameter
+             # but does that make mathematical sense? What are the rotation noise units?
+             new_particle.orientation = rotateQuaternion(new_particle.orientation,(math.radians(random.gauss(0,self.ODOM_ROTATION_NOISE))))
+             resampled_cloud.poses.append(new_particle)
+
         self.add_random_particle_distribution(1, n_random, resampled_cloud)
-        #     new_particle = deepcopy(particle[0])
-        #     # sample gaussian noise with sigma = noise parameters, and mean = location
-        #     new_particle.position.x = random.gauss(new_particle.position.x,self.ODOM_TRANSLATION_NOISE)
-        #     new_particle.position.y = random.gauss(new_particle.position.y,self.ODOM_DRIFT_NOISE)
-        #     # sample gaussian noise from the rotation parameter
-        #     # but does that make mathematical sense? What are the rotation noise units?
-        #     new_particle.orientation = rotateQuaternion(new_particle.orientation,(math.radians(random.gauss(0,self.ODOM_ROTATION_NOISE))))
-        #     resampled_cloud.poses.append(new_particle)
 
         # self.add_random_particle_distribution(1, 20, resampled_cloud)
         self.particlecloud = resampled_cloud
-	 
-
-    """def estimate_pose(self):
-        # Create new estimated pose, given particle cloud
-        # E.g. just average the location and orientation values of each of
-        # the particles and return this.
-<<<<<<< HEAD
-
-=======
-        
-
-    	# Better approximations could be made by doing some simple clustering,
-    	# e.g. taking the average location of half the particles after 
-    	# throwing away any which are outliers
-    	# takes input in the form of a ROS PoseArray
-    	# currently averaging values
-    	# averaging quanternions only makes sense if their orientations are similar. If they're not, averages are
-    	# meaningless and require multiple representations (from paper below).
-    	# http://www.cs.unc.edu/techreports/01-029.pdf
->>>>>>> 7dba0ef2a6af4206a27cd9a50a61b2929e30d041
-    	x,y,qz,qw = 0,0,0,0
-    	for item in self.particlecloud.poses:
-    	    # z should always be 0
-    	    x += item.position.x
-    	    y += item.position.y
-    	    # this should need yaw only
-    	    qz += item.orientation.z
-    	    qw += item.orientation.w
-    	n = len(self.particlecloud.poses)
-    	# calculate mean values
-    	mean_x = x/n
-        mean_y = y/n
-        mean_qz = qz/n
-    	mean_qw = qw/n
-    	# the other vars should be initialised to 0.0 so don't need to be defined here
-    	estimated_pose = Pose()
-    	estimated_pose.position.x = mean_x
-    	estimated_pose.position.y = mean_y        
-        # changed the mean to the z dim
-        estimated_pose.orientation.z = mean_qz
-       	estimated_pose.orientation.w = mean_qw
-       	return estimated_pose
-        # return self.estimatedpose.pose.pose"""
 
 
     #Each item in the list points should be a 4-tuple (x, y, qz, qw)
