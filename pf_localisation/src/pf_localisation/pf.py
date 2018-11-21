@@ -23,17 +23,17 @@ class PFLocaliser(PFLocaliserBase):
         super(PFLocaliser, self).__init__()
         
         # Set motion model parameters
-        self.ODOM_ROTATION_NOISE = 1 # Odometry model rotation noise
-        self.ODOM_TRANSLATION_NOISE = 1 # Odometry model x axis (forward) noise
-        self.ODOM_DRIFT_NOISE = 1 # Odometry model y axis (side-to-side) noise        
+        self.ODOM_ROTATION_NOISE = 0.1 # Odometry model rotation noise
+        self.ODOM_TRANSLATION_NOISE = 0.1 # Odometry model x axis (forward) noise
+        self.ODOM_DRIFT_NOISE = 0.1 # Odometry model y axis (side-to-side) noise        
 
         # Sensor model parameters
         self.NUMBER_PREDICTED_READINGS = 20     # Number of readings to predict
 
         self.NUMBER_PARTICLES = 500
 
-        self.ADAPTATIVE_RATIO = float(1)/5
-        self.ADAPTATIVE_THRESHOLD = 9
+        self.ADAPTATIVE_RATIO = float(2)/5
+        self.ADAPTATIVE_THRESHOLD = 8.5
 
         # self._stage_ros_pose_subscriber = rospy.Subscriber("/base_pose_ground_truth", Odometry,
         #                                           self.stage_pose_callback,
