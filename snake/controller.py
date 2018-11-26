@@ -12,7 +12,7 @@ class controller(object):
 	def __init__(self):
 		self.exploring_topic_name = "exploring"
 		self.or_topic_name = "or"
-		self.speech_topic_name = "speech"
+		self.speech_topic_name = "voice_commands"
 
 		self._or_subscriber = rospy.Subscriber(self.or_topic_name, PoseWithCovarianceStamped,
 		                                          self._or_callback,
@@ -51,7 +51,7 @@ class controller(object):
 			
 
 	def _speech_callback(self, msg):
-		if(msg == "start"):
+		if(msg == "begin"):
 			self._exploring_publisher.publish("explore")
 		elif(msg == "stop"):
 			nav.cancel_goal()
