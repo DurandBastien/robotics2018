@@ -67,9 +67,10 @@ class Display():
 
         
 class Explore():
-    def __init__(self):
+    def __init__(self, shrink_factor):
+        self.shrink_factor = shrink_factor
         self.pose = None
-        self.setup_finished = False
+        self.map_set = False
         
         #used to see which cells have been explored
         # 0=obstacle,outOfBounds 1=unexplored, 2=explored
@@ -98,23 +99,20 @@ class Explore():
         self.map_resolution = occ_map.info.resolution
         self.map_data = occ_map.data
         self.map_origin_x = ( occ_map.info.origin.position.x +
-                         (self.map_width / 2.0) * self.map_resolution )
+                         (self.map_width / 2.0) * self.map_resolution*self.shrink_factor )
         self.map_origin_y = ( occ_map.info.origin.position.y +
-                         (self.map_height / 2.0) * self.map_resolution )
-
-        self.set_map()
-        self.test_map = self.set_map_2()
+                         (self.map_height / 2.0) * self.map_resolution*self.shrink_factor )
 
         self._odometry_sub = rospy.Subscriber("/odom", Odometry, self._odometry_callback, queue_size=1)
         
 
     def _odometry_callback(self, odo):
 
-        
-        self.update_exploration_map([], odo.pose.pose)
-        #goal = self.calc_next_goal(odo.pose.pose)
-        #rospy.loginfo("next move: {}".format(goal))
-        rospy.sleep(1)
+        if self.map_set:
+            self.update_exploration_map([], odo.pose.pose)
+            goal = self.calc_next_goal(odo.pose.pose)
+            rospy.loginfo("next move: {}".format(goal))
+            #rospy.sleep(1)
 
         
     def set_robot_location(self, p):
@@ -127,9 +125,11 @@ class Explore():
     def restart_exploration(self):
         self.exploration_map = self.default_map
         self.img = Image.fromarray(self.exploration_map.T, 'L')
+        self.map_set = True
 
         
     def set_map(self):
+        self.map_set = false
         self.default_map = np.zeros((self.map_height, self.map_width), dtype = np.uint8)
         
         for i in range(self.map_height):
@@ -144,27 +144,28 @@ class Explore():
         self.restart_exploration()
 
         
-    def set_map_2(self):
+    def set_map_and_reduce(self):
         #reduce the resolution as well
-        default_map = np.zeros((self.map_height/2, self.map_width/2), dtype = np.uint8)
-        a= 0 
-        for i in range(0, len(default_map)):
-            for j in range(0, len(default_map[0])):
+        self.map_set = False        
+        self.default_map = np.zeros((self.map_height/self.shrink_factor,
+                                self.map_width/self.shrink_factor),
+                               dtype = np.uint8)
+        
+        for i in range(0, len(self.default_map)):
+            for j in range(0, len(self.default_map[0])):
                 sum = 0
-                for k in range(i*2, i*2+2):
-                    a = a + 1
-                    for l in range(j*2, j*2+2):
+                for k in range(i*self.shrink_factor, i*self.shrink_factor+self.shrink_factor):
+                    for l in range(j*self.shrink_factor, j*self.shrink_factor + self.shrink_factor):
                         cell = self.map_data[k*self.map_width + l]
                         if cell < 0.196 and cell >= 0:
                             sum = sum + 1
                         
-                if sum == math.pow(2,2):
-                    default_map[i, j] = 1
-                
+                if sum == math.pow(self.shrink_factor,2):
+                    self.default_map[i, j] = 1
 
-        return default_map
-        #self.grid = Grid(matrix = self.default_map)
-        #self.restart_exploration()
+        self.grid = Grid(matrix = self.default_map)
+        self.restart_exploration()
+        
         
 
     def update_exploration_map(self, scan_data, pose):
@@ -212,9 +213,6 @@ class Explore():
         a_x, a_y = self.translate_coord(a_x, a_y)
         c_x, c_y = self.translate_coord(robot_position.x, robot_position.y)
 
-        rospy.loginfo("a_ang: {}, b_ang: {}, orientation: {}".format(a_angle, b_angle, robot_orientation))
-        rospy.loginfo("a: ({},{}), b: ({},{}), c: ({},{})".format(a_x, a_y, b_x, b_y, c_x, c_y))
-        
         #set cells to 2 (explored)
         ImageDraw.Draw(self.img).polygon([(a_y, a_x), (b_y, b_x), (c_y, c_x)], outline=2, fill=2)
 
@@ -294,8 +292,10 @@ class Explore():
             
 
     def translate_coord(self, x, y):
-        x = int(((x - self.map_origin_x)/ self.map_resolution + 0.5) + self.map_width/2.0)
-        y = int(((y - self.map_origin_y)/ self.map_resolution + 0.5) + self.map_height/2.0)
+        x = int(((x - self.map_origin_x)/(self.map_resolution*self.shrink_factor) + 0.5)
+                + self.map_width/2.0)
+        y = int(((y - self.map_origin_y)/(self.map_resolution*self.shrink_factor) + 0.5)
+                + self.map_height/2.0)
         return (x, y)
 
 
@@ -432,7 +432,9 @@ class Explore():
 if __name__ == '__main__':
     rospy.init_node("explorer")
     d = Display()
-    e = Explore()
+    e = Explore(3)
+    #self.set_map()
+    e.set_map_and_reduce()
     rospy.spin()
-    d.display(e.test_map)
+    d.display(np.array(e.img).T)
 
