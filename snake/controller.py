@@ -1,12 +1,14 @@
-#!/usr/bin/env python
+#!/usr/bin/python
 
 import rospy
 import actionlib
 import nav_util
 import math
+import explore
 
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
-from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped
+from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, Pose, Quaternion, Point
+from nav_msgs.msg import Odometry
 from std_msgs.msg import String
 
 class controller(object):
@@ -30,13 +32,25 @@ class controller(object):
         self._exploring_publisher = rospy.Publisher(self.exploring_topic_name,
                                                     String, queue_size = 1)
 
-        self.object_list = {"mouse": {"pose": None, "collected": False}}  #"apple": {"pose": None, "collected": False}}
-        self.map_list = {"mouse": {"pose": None}}  #"apple" : {"pose": None, "collected": False}}
+        self._exploring_subscriber = rospy.Subscriber("where_to_go", Odometry, self._exploring_callback Queue_size = 1)
+
+        
+        #"apple": {"pose": None, "collected": False}}
+        self.object_list = {"mouse": {"pose": None, "collected": False}}
+        #"apple" : {"pose": None, "collected": False}}
+        self.map_list = {"mouse": {"pose": None}} 
         self.priority_list = ["mouse"]
         self.current_target = {"name": self.priority_list[0]}
+
         self.nav = nav_util.nav_util()
         self.distance_threshold = 0.35
 
+
+        
+    def _exploring_callback(self, Pose):
+        self.nav.got_to_pose(Pose)
+        
+        
     def _or_callback(self, pose):
         rospy.loginfo("in callback")
         if (self.object_list[pose.header.frame_id]["pose"] == None):

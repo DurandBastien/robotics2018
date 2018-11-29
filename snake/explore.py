@@ -3,6 +3,7 @@
 import rospy
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, PoseArray,Pose, Point, Quaternion
 from nav_msgs.msg import OccupancyGrid, Odometry
+from std_msgs.msg import String
 import sys
 from copy import deepcopy
 import math
@@ -13,6 +14,8 @@ from pathfinding.core.grid import Grid
 from pathfinding.finder.a_star import AStarFinder
 from pathfinding.core.diagonal_movement import DiagonalMovement
 
+import actionlib
+
 """
 use frontier explorer to choose where to go next
 - Just looking for closest frontier
@@ -22,12 +25,12 @@ use frontier explorer to choose where to go next
 use inverse sensor method to update cells in the view frustum of the sensor 
 - performed by ray tracing in the grid
 - based on Bresenham line drawing algorithm
+- possibly more efficient alogirthm that doesn't priotize best path
 
 
 
 Possible improvemented
 - Remove rows and columns that only have out of bound values, remember to take into account the removed rows when calculating robot position in the array map
-- merge cells, remember take into account lose cells 
 
 """
 
@@ -64,12 +67,12 @@ class Display():
 
         img1 = Image.fromarray(map1.T, 'L')
         img1.show()
-
+        
         
 class Explore():
     def __init__(self, shrink_factor):
         self.shrink_factor = shrink_factor
-        self.pose = None
+        self.current_odometry = None
         self.map_set = False
         
         #used to see which cells have been explored
@@ -81,8 +84,9 @@ class Explore():
         
         #used for pathfinding and reseting exploration map
         #0=obstacle 1=free
-        self.default_map = None 
-        
+        self.default_map = None
+
+
         rospy.loginfo("Waiting for a map...")
         try:
             occ_map = rospy.wait_for_message("/map", OccupancyGrid, 20)
@@ -90,10 +94,10 @@ class Explore():
             rospy.logerr("Problem getting a map. Check that you have a map_server"
                      " running: rosrun map_server map_server <mapname> " )
             sys.exit(1)
-        rospy.loginfo("Map received. %d X %d, %f px/m." %
-                      (occ_map.info.width, occ_map.info.height,
+        rospy.loginfo("Map received. %d X %d, %f px/m." % (occ_map.info.width, occ_map.info.height,
                        occ_map.info.resolution))
 
+        
         self.map_width = occ_map.info.width
         self.map_height = occ_map.info.height
         self.map_resolution = occ_map.info.resolution
@@ -103,12 +107,42 @@ class Explore():
         self.map_origin_y = ( occ_map.info.origin.position.y +
                          (self.map_height / 2.0) * self.map_resolution*self.shrink_factor )
 
-        self._odometry_sub = rospy.Subscriber("/odom", Odometry, self._odometry_callback, queue_size=1)
+        self.set_map_and_reduce()
+
+        
+        #self._odometry_sub = rospy.Subscriber("/odom", Odometry, self._odometry_callback, queue_size=1)
+
+        self._exploring_sub = rospy.Subscriber("exploring", Pose, self._exploring_callback, queue_size=100)
+
+        self._pose_subscriber = rospy.Subscriber("/amcl_pose", PoseWithCovarianceStamped,
+		                                          self._pose_callback,
+		                                          queue_size=1)
+        
+        self.goal_publisher = rospy.Publisher("where_to_go", Point,queue_size=1)
+        
         
 
-    def _odometry_callback(self, odo):
+    def _exploring_callback(self, msg):
+        if self.map_set and msg == "explore":
+            copy_odo = self.current_odometry
+            rospy.loginfo("_exploring_callback")
+            self.update_exploration_map([], self.current_odometry.pose.pose)
+            goal_pose = self.calc_next_goal(self.current_odometry.pose.pose)
+            rospy.loginfo("next move: {}".format(goal))
 
+            new_odo = copy_odo
+            new_odo.pose.pose.point.x = goal[0]
+            new_odo.pose.pose.point.y = goal[1]
+            
+            self.goal_publisher.publish(new_odo)
+            #rospy.sleep(1)
+
+    def _pose_callback(self, odometry):
+        self.current_odometry = odometry
+        
+    def _odometry_callback(self, odo):
         if self.map_set:
+            rospy.loginfo("_odometry_callback")
             self.update_exploration_map([], odo.pose.pose)
             goal = self.calc_next_goal(odo.pose.pose)
             rospy.loginfo("next move: {}".format(goal))
@@ -428,7 +462,10 @@ class Explore():
             if to_delete_columns:
                 [x.pop(j) for x in self.def_exploration_map]
     """
-        
+
+
+
+"""
 if __name__ == '__main__':
     rospy.init_node("explorer")
     d = Display()
@@ -437,4 +474,4 @@ if __name__ == '__main__':
     e.set_map_and_reduce()
     rospy.spin()
     d.display(np.array(e.img).T)
-
+"""
