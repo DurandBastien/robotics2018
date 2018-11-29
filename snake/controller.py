@@ -43,14 +43,17 @@ class controller(object):
 				current_target = {"name":self.priority_list[0]}
 				del self.priority_list[0]
 				if(object_list[current_target["name"]]["pose"] != None):
+					self._exploring_publisher.publish("stop")
 					self.nav.go_to_pose(object_list[current_target["name"]]["pose"])
 				else:
 					self._exploring_publisher.publish("explore")
 			elif(nav.get_goalStatus() != 1):
+				self._exploring_publisher.publish("stop")
 				self.nav.go_to_pose(pose)
 			
 
 	def _speech_callback(self, msg):
+		rospy.loginfo(msg)
 		if(msg == "start"):
 			self._exploring_publisher.publish("explore")
 		elif(msg == "stop"):
