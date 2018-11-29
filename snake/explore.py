@@ -118,7 +118,7 @@ class Explore():
 		                                          self._pose_callback,
 		                                          queue_size=1)
         
-        self.goal_publisher = rospy.Publisher("where_to_go", Point,queue_size=1)
+        self.goal_publisher = rospy.Publisher("where_to_go", PoseWithCovarianceStamped,queue_size=1)
         
         
 
