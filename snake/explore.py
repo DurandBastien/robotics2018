@@ -275,25 +275,26 @@ class Explore():
     
         while True:
             x_start = np.max([x - level, 0])
-            x_end = np.min([x + level, self.map_width - 1])
+            x_end = np.min([x + level, self.map_width/self.shrink_factor - 1])
             y_start = np.max([y - level, 0])
-            y_end = np.min([y + level, self.map_height - 1])
+            y_end = np.min([y + level, self.map_height/self.shrink_factor - 1])
 
             #for each: if not explored and can be reached
             i = y_start
             j = x_start
             while j < x_end:
-                if j < self.map_width and self.exploration_map[i][j] == 1:
+                if j < self.map_width/self.shrink_factor and self.exploration_map[i][j] == 1:
                     if self.is_reachable(x, y, j, i):
                         return (j, i)
                     else:
                         self.exploration_map[i][j] = 0
                 j = j + 1
 
+
             i = y_end
             j = x_start
             while i < y_end:
-                if i < self.map_height and self.exploration_map[i][j] == 1:
+                if i < self.map_height/self.shrink_factor and self.exploration_map[i][j] == 1:
                     if self.is_reachable(x, y, j, i):
                         return (j, i)
                     else:

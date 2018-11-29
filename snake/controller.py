@@ -32,7 +32,7 @@ class controller(object):
         self._exploring_publisher = rospy.Publisher(self.exploring_topic_name,
                                                     String, queue_size = 1)
 
-        self._exploring_subscriber = rospy.Subscriber("where_to_go", Odometry, self._exploring_callback Queue_size = 1)
+        self._exploring_subscriber = rospy.Subscriber("where_to_go", PoseWithCovarianceStamped, self._exploring_callback, queue_size = 1)
 
         
         #"apple": {"pose": None, "collected": False}}
@@ -48,7 +48,7 @@ class controller(object):
 
         
     def _exploring_callback(self, Pose):
-        self.nav.got_to_pose(Pose)
+        self.nav.go_to_pose(Pose)
         
         
     def _or_callback(self, pose):
@@ -89,7 +89,6 @@ class controller(object):
         rospy.loginfo(dist)
         return dist
 
->>>>>>> db39e64ed0a9a536cb9198c87573cf2afc2dc9da
 
 if __name__ == '__main__':
     # --- Main Program  ---
