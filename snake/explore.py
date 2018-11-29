@@ -111,37 +111,42 @@ class Explore():
 
         
         #self._odometry_sub = rospy.Subscriber("/odom", Odometry, self._odometry_callback, queue_size=1)
-
-        self._exploring_sub = rospy.Subscriber("exploring", Pose, self._exploring_callback, queue_size=100)
+        
+        self._exploring_sub = rospy.Subscriber("/exploring", String, self._exploring_callback, queue_size=1)
 
         self._pose_subscriber = rospy.Subscriber("/amcl_pose", PoseWithCovarianceStamped,
 		                                          self._pose_callback,
 		                                          queue_size=1)
         
-        self.goal_publisher = rospy.Publisher("where_to_go", Point,queue_size=1)
+        self.goal_publisher = rospy.Publisher("/where_to_go", PoseWithCovarianceStamped ,queue_size=1)
         
         
 
     def _exploring_callback(self, msg):
-        if self.map_set and msg == "explore":
+        rospy.loginfo("msg: {}, map_set: {}".format(msg.data, self.map_set))
+        if self.map_set and msg.data and self.current_odometry is not None:
             copy_odo = self.current_odometry
             rospy.loginfo("_exploring_callback")
-            self.update_exploration_map([], self.current_odometry.pose.pose)
-            goal_pose = self.calc_next_goal(self.current_odometry.pose.pose)
-            rospy.loginfo("next move: {}".format(goal))
+            
+            goal_pose = self.calc_next_goal(copy_odo.pose.pose)
+            rospy.loginfo("next move: {}".format(goal_pose))
 
             new_odo = copy_odo
-            new_odo.pose.pose.point.x = goal[0]
-            new_odo.pose.pose.point.y = goal[1]
+            new_odo.pose.pose.position.x = goal_pose[0]
+            new_odo.pose.pose.position.y = goal_pose[1]
             
             self.goal_publisher.publish(new_odo)
             #rospy.sleep(1)
 
     def _pose_callback(self, odometry):
         self.current_odometry = odometry
+        if self.map_set:
+            self.update_exploration_map([], self.current_odometry.pose.pose)
+
+        
         
     def _odometry_callback(self, odo):
-        if self.map_set:
+        if self.map_set and self.current_odometry is not None:
             rospy.loginfo("_odometry_callback")
             self.update_exploration_map([], odo.pose.pose)
             goal = self.calc_next_goal(odo.pose.pose)
@@ -160,6 +165,7 @@ class Explore():
         self.exploration_map = self.default_map
         self.img = Image.fromarray(self.exploration_map.T, 'L')
         self.map_set = True
+        rospy.loginfo("setup finished")
 
         
     def set_map(self):
@@ -465,13 +471,13 @@ class Explore():
 
 
 
-"""
+
 if __name__ == '__main__':
     rospy.init_node("explorer")
     d = Display()
     e = Explore(3)
     #self.set_map()
-    e.set_map_and_reduce()
+    #e.set_map_and_reduce()
     rospy.spin()
     d.display(np.array(e.img).T)
-"""
+
