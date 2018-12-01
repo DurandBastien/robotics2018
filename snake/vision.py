@@ -12,14 +12,21 @@ import geometry_msgs.msg
 from geometry_msgs.msg import (PoseStamped, TransformStamped, Transform)
 
 class VisionNode():
-    """The Object recognition package must be running in the background and publishing messages for this node to work. In order to simulate, launch the or.launch file - this will publish arbitrary static transforms"""
+    """The Object recognition package must be running in the background and publishing messages for this node to work"""
     def __init__(self):
         # Perhaps publish the object on a separate topic?
         # define object handle
-        self.item_list = ["object_0","object_1","object_2","object_3","object_4","object_5","object_6"]
+        self.item_list = ["object_1","object_2","object_3","object_4","object_5","object_6",
+                          "object_7","object_8","object_9","object_10","object_11","object_12",
+                          "object_13","object_14","object_15","object_16","object_17","object_18"]
         # create a dict to lookup object class
-        self.item_dict = {"mouse" : ["object_0","object_2","object_3"], "apple" : ["object_4","object_5","object_6"]}
-        self.in_map_log = ["mouse", "apple"]
+        self.item_dict = {"apple" : ["object_1","object_2","object_3","object_4","object_5",
+                                     "object_6","object_7","object_8","object_9","object_10",
+                                     "object_11","object_12","object_13","object_14","object_15",],
+                          "mouse" : ["object_16","object_17","object_18","object_19","object_20",
+                                     "object_21","object_22","object_23","object_24","object_25",
+                                     "object_26","object_27","object_28","object_29","object_30"]}
+        self.in_map_log = [] # ["mouse", "apple"]
 
         self.tfMessage = tfMessage()
         self.tf_listener = tf.TransformListener()
@@ -58,7 +65,7 @@ class VisionNode():
                 obj_pos.pose.orientation.y = rot[1]
                 obj_pos.pose.orientation.z = rot[2]
                 obj_pos.pose.orientation.w = rot[3]
-                obj_pose = self.tf_listener.transformPose("/odom", obj_pos)
+                obj_pose = self.tf_listener.transformPose("/base_link", obj_pos)
                 obj_pose.header.frame_id = obj_type
 
                 transform = Transform()
@@ -67,7 +74,7 @@ class VisionNode():
                 # Insert new Transform into a TransformStamped object and add to the tf tree
                 new_tfstamped = TransformStamped()
                 new_tfstamped.child_frame_id = obj_type
-                new_tfstamped.header.frame_id = "/odom"
+                new_tfstamped.header.frame_id = "/base_link"
                 new_tfstamped.transform = transform
                 new_tfstamped.header.stamp = t
                 # add to tf list
