@@ -126,20 +126,19 @@ class Explore():
 
 
     def _exploring_callback(self, msg):
-        rospy.loginfo("msg: {}, map_set: {}, got_current_odo: {}".format(msg.data, self.map_set, self.current_odometry is not None ))
+        rospy.loginfo("map_set: {}, msg.data: {}, current_odo is not None: {}".format(self.map_set, msg.data, self.current_odometry is not None))
         if self.map_set and msg.data and self.current_odometry is not None:
-            copy_odo = self.current_odometry
-            rospy.loginfo("_exploring_callback")
+            copy_odo = deepcopy(self.current_odometry)
             
             goal_pose = self.calc_next_goal(copy_odo.pose.pose)
-            #goal_pose = self.translate_coord_back(goal_pose[0], goal_pose[1])
+            goal_pose = self.translate_coord_back(goal_pose[0], goal_pose[1])
+
             rospy.loginfo("current position: {}".format(self.translate_coord(copy_odo.pose.pose.position.x, copy_odo.pose.pose.position.y)))
             rospy.loginfo("next move: {}".format(goal_pose))
 
             new_odo = copy_odo
             new_odo.pose.pose.position.x = goal_pose[0]
             new_odo.pose.pose.position.y = goal_pose[1]
-            
             self.goal_publisher.publish(new_odo)
             #rospy.sleep(1)
 
@@ -259,18 +258,13 @@ class Explore():
         c_x, c_y = self.translate_coord(robot_position.x, robot_position.y)
 
         #set cells to 2 (explored)
-        ImageDraw.Draw(self.img).polygon([(a_y, a_x), (b_y, b_x), (c_y, c_x)], outline=2, fill=2)
-        """
         if self.previous_b_x is None:
             ImageDraw.Draw(self.img).polygon([(a_y, a_x), (b_y, b_x), (c_y, c_x)], outline=2, fill=2)
         else:
-            ImageDraw.Draw(self.img).polygon([(a_y, a_x),(self.previous_a_y, self.previous_a_x),
-                                              (self.previous_b_y, self.previous_b_x), (b_y, b_x),
-                                              (self.previous_c_y, self.previous_c_x)],
-                                             outline=2, fill=2)
+            ImageDraw.Draw(self.img).polygon([(a_y, a_x), (b_y, b_x), (c_y, c_x)], outline=200, fill=200)
+            ImageDraw.Draw(self.img).polygon([(a_y, a_x), (b_y, b_x), (self.previous_b_y, self.previous_b_x), (self.previous_a_y, self.previous_a_x)], outline=200, fill=200)
+            ImageDraw.Draw(self.img).polygon([(self.previous_a_y, self.previous_a_x), (a_y, a_x), (self.previous_b_y, self.previous_b_x), (b_y, b_x)], outline=200, fill=200)
             
-            rospy.loginfo("a: {}, p_a: {}, p_b: {}, b: {}, p_c: {}".format((a_y, a_x),(self.previous_a_y, self.previous_a_x), (self.previous_b_y, self.previous_b_x), (b_y, b_x), (self.previous_c_y, self.previous_c_x)))
-        
             
         self.previous_b_x = b_x
         self.previous_b_y = b_y
@@ -278,7 +272,7 @@ class Explore():
         self.previous_a_x = a_x
         self.previous_c_x = c_x
         self.previous_c_y = c_y
-        """
+        
         
         
         
@@ -289,7 +283,8 @@ class Explore():
         self.exploration_map = np.array(self.img).T
         
         level = 0
-    
+
+        rospy.loginfo("real_coord: ({}, {}), translated_coord: ({}, {})".format(pose.position.x, pose.position.y, x, y))
         while True:
             x_start = np.max([x - level, 0])
             x_end = np.min([x + level, self.map_width/self.shrink_factor - 1])
@@ -315,7 +310,7 @@ class Explore():
                         return (j, i)
                     else:
                         self.exploration_map[i][j] = 0
-                i = i + 1
+                i = i + 1        
 
             i = y_end
             j = x_end
