@@ -23,32 +23,40 @@ class Point(object): #Having to reinvent the wheel here because ROS isn't workin
 # To avoid crossing the tail, EVERY TIME THE ROBOT MOVES:
 #   Call isLegalMove(Point) before doing so.  Do not make the movement if it returns false.
 #   Call changePosition(Point) after doing so.
+# aStar (Point) works if you give it the point you want to eventually reach.
+#   It will return the point you should move to next.
+#   Which will always be distanceUnit away in one of the four cardinal directions.
 
 def test():
     snake = SnakeTailController(Point(0.0, 0.0))
-    snake.changePosition(snake.aStar(Point(0.0, 0.0), Point(0.1, 0.1)))
-    snake.changePosition(snake.aStar(snake.currentPoint, Point(0.1, 0.1)))
+    snake.changePosition(snake.aStar(Point(0.1, 0.1)))
+    snake.changePosition(snake.aStar(Point(0.1, 0.1)))
     print(snake.currentPoint)
     print(snake.tail)
+    print(snake.isLegalMove(snake.tail, Point(0.0,0.1)))
 
 
 class SnakeTailController(object):
 
-    mapSet = set([(0.0, 0.0), (0.1, 0.1), (0.1, 0.0), (0.0, 0.1)]) #For testing purposes, needs to have the actual map added.
+    mapSet = set([(0.0, 0.0), (0.1, 0.1), (0.1, 0.0), (0.0, 0.1)]) #FOR TESTING ONLY!
+    #OK, so before this can work with the actual map
+    #We'll need some way to convert the map to a grid of points.
+    #And create a set that only includes the points that actually exist.
     tailLength = 0.0
     currentPoint = Point(0.0, 0.0, 0.0)
-    distanceUnit = 0.1
+    distanceUnit = 0.1 #Set this to adjust how far a given move will go.
+                       #Bigger distanceUnit = better performance but less precise movement.
     tail = []
 
-    def aStar(self, startingPoint, targetPoint):
-        if ((-(self.distanceUnit/2) <= (startingPoint.x - targetPoint.x) <= (self.distanceUnit/2)) and ((self.distanceUnit/2) <= (startingPoint.y - targetPoint.y) <= (self.distanceUnit/2))):
-            return startingPoint
-        newPoints = self.__adjacentPoints(startingPoint, self, 1)
+    def aStar(self, targetPoint):
+        if ((-(self.distanceUnit/2) <= (self.currentPoint.x - targetPoint.x) <= (self.distanceUnit/2)) and ((self.distanceUnit/2) <= (self.currentPoint.y - targetPoint.y) <= (self.distanceUnit/2))):
+            return self.currentPoint
+        newPoints = self.__adjacentPoints(self.currentPoint, self, 1)
         frontier = set()
         for newP in newPoints:
             frontier.add((newP[0], newP[1], self.__distance(Point(newP[0], newP[1]), targetPoint) + self.distanceUnit, Point(newP[0], newP[1])))
-        print("Frontier:")
-        print(frontier)
+        #print("Frontier:")
+        #print(frontier)
         unfinished = True
         while(unfinished):
             bestScore = 999999999999999999999
@@ -170,17 +178,22 @@ class SnakeTailController(object):
     def isLegalMove(self, tailPoints, target):
         if(len(self.tail) >= 2):
             cumulativeLength = 0.0
-            for x in range(len(self.tail) - 2):
+            for x in range(0, len(self.tail) - 1):
+                #print("Debug: " + str(self.tail[x].x) + " " + str(self.tail[x].y))
                 if(self.__intersect(self.currentPoint, target, self.tail[x], self.tail[x+1])):
                     return False
                 cumulativeLength = cumulativeLength + self.__distance(self.tail[x], self.tail[x+1])
-            lastPoint = self.tail[len(self.tail) - 1]
-            secondLast = self.tail[len(self.tail) - 2]
-            fraction = (self.tailLength - cumulativeLength)/self.__distance(lastPoint, secondLast)
-            deltaX = lastPoint.x - secondLast.x #All of this faffing around is needed because the position can't be updated every instant.
-            deltaY = lastPoint.y - secondLast.y #So it may not be the case that the tail stretches the entire distance from the last point
-            realLastPoint = Point(secondLast.x + (deltaX * fraction), secondLast.y + (deltaY * fraction), 0.0) #to the second-last point.
-            return not self.__intersect(self.currentPoint, target, secondLast, realLastPoint)
+                if(target.x == self.tail[x].x and target.y == self.tail[x].y):
+                    return False
+            if (target.x == self.tail[len(self.tail) - 1].x and target.y == self.tail[len(self.tail) - 1].y):
+                return False
+            #lastPoint = self.tail[len(self.tail) - 1]
+            #secondLast = self.tail[len(self.tail) - 2]
+            #fraction = (self.tailLength - cumulativeLength)/self.__distance(lastPoint, secondLast)
+            #deltaX = lastPoint.x - secondLast.x #All of this faffing around is needed because the position can't be updated every instant.
+            #deltaY = lastPoint.y - secondLast.y #So it may not be the case that the tail stretches the entire distance from the last point
+            #realLastPoint = Point(secondLast.x + (deltaX * fraction), secondLast.y + (deltaY * fraction), 0.0) #to the second-last point.
+            #return not self.__intersect(self.currentPoint, target, secondLast, realLastPoint)
            # m = (lastPoint.y - secondLast.y)/(lastPoint.x - secondLast.x)
            # realLastPoint = Point(secondLast.x + (m * (tailLength - cumulativeLength)), secondLast.x + (m * (tailLength - cumulativeLength))
         return True
