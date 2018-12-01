@@ -14,8 +14,6 @@ from pathfinding.core.grid import Grid
 from pathfinding.finder.a_star import AStarFinder
 from pathfinding.core.diagonal_movement import DiagonalMovement
 
-import actionlib
-
 """
 use frontier explorer to choose where to go next
 - Just looking for closest frontier
@@ -78,9 +76,15 @@ class Explore():
         #used to see which cells have been explored
         # 0=obstacle,outOfBounds 1=unexplored, 2=explored
         self.exploration_map = None
-        self.img = None
         self.grid = None
         self.finder = AStarFinder(diagonal_movement=DiagonalMovement.always)
+        self.img = None
+        self.previous_b_x = None
+        self.previous_b_y = None
+        self.previous_a_y = None
+        self.previous_a_x = None
+        self.previous_c_x = None
+        self.previous_c_y = None
         
         #used for pathfinding and reseting exploration map
         #0=obstacle 1=free
@@ -118,16 +122,18 @@ class Explore():
 		                                          self._pose_callback,
 		                                          queue_size=1)
         
-        self.goal_publisher = rospy.Publisher("where_to_go", PoseWithCovarianceStamped,queue_size=1)
-        
+        self.goal_publisher = rospy.Publisher("/where_to_go", PoseWithCovarianceStamped ,queue_size=1)
+
 
     def _exploring_callback(self, msg):
-        rospy.loginfo("msg: {}, map_set: {}".format(msg.data, self.map_set))
+        rospy.loginfo("msg: {}, map_set: {}, got_current_odo: {}".format(msg.data, self.map_set, self.current_odometry is not None ))
         if self.map_set and msg.data and self.current_odometry is not None:
             copy_odo = self.current_odometry
             rospy.loginfo("_exploring_callback")
             
             goal_pose = self.calc_next_goal(copy_odo.pose.pose)
+            #goal_pose = self.translate_coord_back(goal_pose[0], goal_pose[1])
+            rospy.loginfo("current position: {}".format(self.translate_coord(copy_odo.pose.pose.position.x, copy_odo.pose.pose.position.y)))
             rospy.loginfo("next move: {}".format(goal_pose))
 
             new_odo = copy_odo
@@ -254,16 +260,27 @@ class Explore():
 
         #set cells to 2 (explored)
         ImageDraw.Draw(self.img).polygon([(a_y, a_x), (b_y, b_x), (c_y, c_x)], outline=2, fill=2)
-
-
-
-
-        #rospy.loginfo("update_exploration_map. robot_o: {}, a_angle: {}, b_angle: {}".format(robot_orientation, a_angle, b_angle))
-        #rospy.loginfo("update_exploration_map. a: ({},{}), b: ({},{}), c: ({},{})".format(a_x, a_y, b_x, b_y, c_x, c_y))
-
-
-
-
+        """
+        if self.previous_b_x is None:
+            ImageDraw.Draw(self.img).polygon([(a_y, a_x), (b_y, b_x), (c_y, c_x)], outline=2, fill=2)
+        else:
+            ImageDraw.Draw(self.img).polygon([(a_y, a_x),(self.previous_a_y, self.previous_a_x),
+                                              (self.previous_b_y, self.previous_b_x), (b_y, b_x),
+                                              (self.previous_c_y, self.previous_c_x)],
+                                             outline=2, fill=2)
+            
+            rospy.loginfo("a: {}, p_a: {}, p_b: {}, b: {}, p_c: {}".format((a_y, a_x),(self.previous_a_y, self.previous_a_x), (self.previous_b_y, self.previous_b_x), (b_y, b_x), (self.previous_c_y, self.previous_c_x)))
+        
+            
+        self.previous_b_x = b_x
+        self.previous_b_y = b_y
+        self.previous_a_y = a_y
+        self.previous_a_x = a_x
+        self.previous_c_x = c_x
+        self.previous_c_y = c_y
+        """
+        
+        
         
     def calc_next_goal(self, pose):
         #where the search will start (the location of robot/pose)
@@ -289,7 +306,6 @@ class Explore():
                     else:
                         self.exploration_map[i][j] = 0
                 j = j + 1
-
 
             i = y_end
             j = x_start
@@ -332,12 +348,17 @@ class Explore():
             
 
     def translate_coord(self, x, y):
-        x = int(((x - self.map_origin_x)/(self.map_resolution*self.shrink_factor) + 0.5)
+        x = int((x - self.map_origin_x)/(self.map_resolution*self.shrink_factor) + 0.5
                 + self.map_width/2.0)
-        y = int(((y - self.map_origin_y)/(self.map_resolution*self.shrink_factor) + 0.5)
+        y = int((y - self.map_origin_y)/(self.map_resolution*self.shrink_factor) + 0.5
                 + self.map_height/2.0)
         return (x, y)
 
+
+    def translate_coord_back(self, x, y):
+        real_x = (x - self.map_width/2.0)*self.map_resolution*self.shrink_factor + self.map_origin_x
+        real_y = (y - self.map_height/2.0)*self.map_resolution*self.shrink_factor + self.map_origin_y
+        return (real_x, real_y)
 
     def is_reachable(self, x, y, x2, y2):
         self.grid.cleanup()
