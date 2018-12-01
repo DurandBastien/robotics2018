@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import speech_recognition as sperec
 import rospy
 from std_msgs.msg import String
