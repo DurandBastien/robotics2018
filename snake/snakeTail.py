@@ -29,13 +29,21 @@ class Point(object): #Having to reinvent the wheel here because ROS isn't workin
 
 def test():
     snake = SnakeTailController(Point(0.0, 0.0))
-    snake.changePosition(snake.aStar(Point(0.2, 0.2)))
+    snake.changePosition(snake.aStar(Point(0.1, 0.0)))
+    print("location: " + str(snake.currentPoint))
+    snake.changePosition(snake.aStar(Point(0.1, 0.1)))
+    print("location: " + str(snake.currentPoint))
+    snake.changePosition(snake.aStar(Point(0.1, 0.2)))
     print("location: " + str(snake.currentPoint))
     snake.changePosition(snake.aStar(Point(0.2, 0.2)))
     print("location: " + str(snake.currentPoint))
-    snake.changePosition(snake.aStar(Point(0.2, 0.2)))
+    snake.changePosition(snake.aStar(Point(0.2, 0.1)))
     print("location: " + str(snake.currentPoint))
-    snake.changePosition(snake.aStar(Point(0.2, 0.2)))
+    snake.changePosition(snake.aStar(Point(0.0, 0.1)))
+    print("location: " + str(snake.currentPoint))
+    snake.changePosition(snake.aStar(Point(0.0, 0.1)))
+    print("location: " + str(snake.currentPoint))
+    snake.changePosition(snake.aStar(Point(0.0, 0.1)))
     print("location: " + str(snake.currentPoint))
     print(snake.tail)
     print(snake.isLegalMove(snake.tail, Point(0.0,0.1)))
@@ -60,9 +68,11 @@ class SnakeTailController(object):
         if (abs(self.currentPoint.x - targetPoint.x) <= (self.distanceUnit/2)) and (abs(self.currentPoint.y - targetPoint.y) <= (self.distanceUnit/2)):
             return self.currentPoint
         newPoints = self.__adjacentPoints(self.currentPoint, self, 1)
-        frontier = set()
+        frontier = []
         for newP in newPoints:
-            frontier.add((newP[0], newP[1], self.distanceUnit, Point(newP[0], newP[1])))
+            temp = copy.deepcopy(self)
+            temp.changePosition(Point(newP[0], newP[1]))
+            frontier.append((newP[0], newP[1], self.distanceUnit, Point(newP[0], newP[1]), temp))
         #print("Frontier:")
         #print(frontier)
         counter = 0
@@ -70,24 +80,27 @@ class SnakeTailController(object):
             counter = counter + 1
             bestScore = 999999999999999999999
             #print(str(counter) + " | " + str(list(frontier)))
-            bestP = list(frontier)[0]  #Each point in the frontier is a tuple of the forx: (X, Y, cost-to-get-there, first-move-to-get-there).
+            bestP = list(frontier)[0]  #Each point in the frontier is a tuple of the form: (X, Y, cost-to-get-there, first-move-to-get-there, SnakeTailController-with-tail-once-there).
+            bestTail = SnakeTailController(Point(0.0, 0.0)) #Ignore this, I just need to include this because otherwise python guesses the type wrong.
             for p in frontier:
                 if self.__distance(Point(p[0], p[1]), targetPoint) == 0:
-                    print(str(p[2]))
+                    #print(str(p[2]))
                     return p[3]
                 if p[2] < bestScore:
                     bestScore = p[2]
                     bestPoint = Point(p[0], p[1])
                     bestStartingMove = p[3]
                     bestP = p
+                    bestTail = p[4]
             frontier.remove(bestP)
             if self.__distance(bestPoint, targetPoint) < self.distanceUnit * 0.8:
                 #print(str(bestP[2]))
                 return bestStartingMove
             else:
-                newPoints = self.__adjacentPoints(bestPoint, self, bestP[2] + self.distanceUnit)
+                bestTail.changePosition(bestPoint)
+                newPoints = self.__adjacentPoints(bestPoint, bestP[4], bestP[2] + self.distanceUnit)
                 for newP in newPoints:
-                    frontier.add((newP[0], newP[1], bestP[2] + self.distanceUnit, bestStartingMove))
+                    frontier.append((newP[0], newP[1], bestP[2] + self.distanceUnit, bestStartingMove, bestTail))
 
 #self.__distance(Point(newP[0], newP[1])
 
