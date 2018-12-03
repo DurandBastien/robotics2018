@@ -1,5 +1,4 @@
 import math
-import random
 import copy
 
 class Point(object): #Having to reinvent the wheel here because ROS isn't working on my laptop, will integrate this with the actual ROS stuff next time I'm with the team.
@@ -28,46 +27,62 @@ class Point(object): #Having to reinvent the wheel here because ROS isn't workin
 #   Which will always be distanceUnit away in one of the four cardinal directions.
 
 def test():
+    teeeest = SnakeTailController()
+    teeeest.setStartingPoint(Point(0.0, 0.0))
+    teeeest.changePosition(teeeest.aStar(Point(0.05, 0.0)))
     snake = SnakeTailController(Point(0.0, 0.0))
-    snake.changePosition(snake.aStar(Point(0.1, 0.0)))
+    snake.changePosition(snake.aStar(Point(0.05, 0.0)))
+    print("location: " + str(snake.currentPoint))
+    snake.changePosition(snake.aStar(Point(0.05, 0.05)))
+    print("location: " + str(snake.currentPoint))
+    snake.changePosition(snake.aStar(Point(0.05, 0.1)))
     print("location: " + str(snake.currentPoint))
     snake.changePosition(snake.aStar(Point(0.1, 0.1)))
     print("location: " + str(snake.currentPoint))
-    snake.changePosition(snake.aStar(Point(0.1, 0.2)))
+    snake.changePosition(snake.aStar(Point(0.1, 0.05)))
+    print("locaation: " + str(snake.currentPoint))
+    snake.changePosition(snake.aStar(Point(0.0, 0.05)))
     print("location: " + str(snake.currentPoint))
-    snake.changePosition(snake.aStar(Point(0.2, 0.2)))
+    snake.changePosition(snake.aStar(Point(0.0, 0.05)))
     print("location: " + str(snake.currentPoint))
-    snake.changePosition(snake.aStar(Point(0.2, 0.1)))
+    snake.changePosition(snake.aStar(Point(0.0, 0.05)))
     print("location: " + str(snake.currentPoint))
-    snake.changePosition(snake.aStar(Point(0.0, 0.1)))
-    print("location: " + str(snake.currentPoint))
-    snake.changePosition(snake.aStar(Point(0.0, 0.1)))
-    print("location: " + str(snake.currentPoint))
-    snake.changePosition(snake.aStar(Point(0.0, 0.1)))
+    snake.changePosition(snake.aStar(Point(0.0, 0.05)))
     print("location: " + str(snake.currentPoint))
     print(snake.tail)
-    print(snake.isLegalMove(snake.tail, Point(0.0,0.1)))
-    print(snake.isLegalMove(snake.tail, Point(0.1,0.0)))
+    print(snake.isLegalMove(snake.tail, Point(0.0,0.05)))
+    print(snake.isLegalMove(snake.tail, Point(0.05,0.0)))
 
 
 class SnakeTailController(object):
 
-    mapSet = set([(0.0, 0.0), (0.1, 0.1), (0.1, 0.0), (0.0, 0.1), (0.0, 0.2), (0.1, 0.2), (0.2, 0.0), (0.2, 0.1), (0.2, 0.2)]) #FOR TESTING ONLY!
+    mapSet = set([(0.0, 0.0), (0.05, 0.05), (0.05, 0.0), (0.0, 0.05), (0.0, 0.1), (0.05, 0.1), (0.1, 0.0), (0.1, 0.05), (0.1, 0.1)]) #FOR TESTING ONLY!
     #OK, so before this can work with the actual map
     #We'll need some way to convert the map to a grid of points.
     #And create a set that only includes the points that actually exist.
     tailLength = 0.0
     currentPoint = Point(0.0, 0.0, 0.0)
-    distanceUnit = 0.1 #Set this to adjust how far a given move will go.
-                       #Bigger distanceUnit = better performance but less precise movement.
-                       #If distanceUnit is set too large then it is also possible that the robot will crash into things.
-                       #I've provisionally set it to 0.1 because 10cm seems like a reasonable amount, maybe?
+    distanceUnit = 0.05  #Set this to adjust how far a given move will go.
+                         #Bigger distanceUnit = better performance but less precise movement.
+                         #If distanceUnit is set too large then it is also possible that the robot will crash into things.
+                         #I've provisionally set it to 0.05 because that's the resolution of the maps that we have.
     tail = []
+        
+    def __init__(self, startingPoint = None):
+        self.currentPoint = startingPoint
+        self.tailLength = self.tailUnitLength()
+        self.tail = [startingPoint]
+
+    def setStartingPoint(self, startingPoint): #This should ONLY be called if the controller had to be initialised without a position.
+        if (self.currentPoint is None):
+            self.currentPoint = startingPoint
+            self.tail = [startingPoint]
 
     def aStar(self, targetPoint):
         if (abs(self.currentPoint.x - targetPoint.x) <= (self.distanceUnit/2)) and (abs(self.currentPoint.y - targetPoint.y) <= (self.distanceUnit/2)):
             return self.currentPoint
         newPoints = self.__adjacentPoints(self.currentPoint, self, 1)
+        #print("NP: " + str(newPoints))
         frontier = []
         for newP in newPoints:
             temp = copy.deepcopy(self)
@@ -75,6 +90,7 @@ class SnakeTailController(object):
             frontier.append((newP[0], newP[1], self.distanceUnit, Point(newP[0], newP[1]), temp))
         #print("Frontier:")
         #print(frontier)
+        #print(list(frontier))
         counter = 0
         while(True):  #Loops until something gets returned.
             counter = counter + 1
@@ -102,9 +118,12 @@ class SnakeTailController(object):
                 for newP in newPoints:
                     frontier.append((newP[0], newP[1], bestP[2] + self.distanceUnit, bestStartingMove, bestTail))
 
-#self.__distance(Point(newP[0], newP[1])
+    # Use this to update the map when a new dynamic obstacle is detected.
+    def updateMap(self, newMap):
+        self.mapSet = newMap
 
     def __adjacentPoints(self, p, snakeTail, weight = 0):
+        #print(p)
         returnSet = set()
         if self.__reachable((p.x + self.distanceUnit, p.y)):
             tailA = copy.deepcopy(snakeTail)
@@ -126,6 +145,7 @@ class SnakeTailController(object):
             if tailD.isLegalMove(tailD.tail, Point(p.x, p.y - self.distanceUnit)):
                 tailD.changePosition(Point(p.x, p.y - self.distanceUnit))
                 returnSet.add((p.x, p.y - self.distanceUnit, weight, tailD))
+        #print(returnSet)
         return returnSet
         
 
@@ -133,15 +153,10 @@ class SnakeTailController(object):
         return (point in self.mapSet)
 
     def tailUnitLength(self):  #Declaring this as a function because for some reason python doesn't actually have constants lol.
-        return 0.3 #Edit this number to chage how fast the tail grows.
+        return 0.15 #Edit this number to chage how fast the tail grows.
                     # This number doesn't in principle have anything to do with distanceUnit.
                     # It almost certainly should be a mutiple of distanceUnit tho.
                     #It's just: how much longer do we make the tail each time we eat something?
-    
-    def __init__(self, startingPoint):
-        self.currentPoint = startingPoint
-        self.tailLength = self.tailUnitLength()
-        self.tail = [startingPoint]
 
     def changePosition(self, newPoint):
         realnewPoint = Point(newPoint.x, newPoint.y, newPoint.z)
@@ -159,25 +174,6 @@ class SnakeTailController(object):
         xOffset = pointA.x - pointB.x
         yOffset = pointA.y - pointB.y
         return math.sqrt((xOffset * xOffset) + (yOffset * yOffset))
-
-#    def intersect(self, pointA1, pointA2, pointB1, pointB2): #Does the line segment from A1 to A2 intersect the line segment from B1 to B2?
-        #y = ((d - b)/(c - a))x + b - (a(d - b)/(c - a))
-        #x = (c2 - c1)/(m1 - m2)
-        #y = m1(c2 - c1)/(m1 - m2) + c1
-#        ma = (pointA2.y - pointA1.y)/(pointA2.x - pointA1.x)
-        #print(ma)
- #       ca = pointA1.y - (pointA1.x * ma)
-        #print(ca)
-  #      mb = (pointB2.y - pointB1.y)/(pointB2.x - pointB1.x)
-        #print(mb)
-   #     cb = pointB1.y - (pointB1.x * mb)
-       # print(cb)
-    #    X = (cb - ca)/(ma - mb)
-        #print(X)
-     #   Y = (ma * X) + ca #X and Y of the intersection if the lines were infinitely long, now just need to find whether it lies on the segments.
-        #print(Y)
-      #  return (self.__between(X, pointA1.x, pointA2.x) and self.__between(Y, pointA1.y, pointA2.y) and self.__between(X, pointB1.x, pointB2.x) and self.__between(Y, pointB1.y, pointB2.y))
-
 
     def __intersect(self, pointA1, pointA2, pointB1, pointB2): #Does the line segment from A1 to A2 intersect the line segment from B1 to B2?
         #y = ((d - b)/(c - a))x + b - (a(d - b)/(c - a))
@@ -215,17 +211,8 @@ class SnakeTailController(object):
                     return False
             if (target.x == self.tail[len(self.tail) - 1].x and target.y == self.tail[len(self.tail) - 1].y):
                 return False
-            #lastPoint = self.tail[len(self.tail) - 1]
-            #secondLast = self.tail[len(self.tail) - 2]
-            #fraction = (self.tailLength - cumulativeLength)/self.__distance(lastPoint, secondLast)
-            #deltaX = lastPoint.x - secondLast.x #All of this faffing around is needed because the position can't be updated every instant.
-            #deltaY = lastPoint.y - secondLast.y #So it may not be the case that the tail stretches the entire distance from the last point
-            #realLastPoint = Point(secondLast.x + (deltaX * fraction), secondLast.y + (deltaY * fraction), 0.0) #to the second-last point.
-            #return not self.__intersect(self.currentPoint, target, secondLast, realLastPoint)
-           # m = (lastPoint.y - secondLast.y)/(lastPoint.x - secondLast.x)
-           # realLastPoint = Point(secondLast.x + (m * (tailLength - cumulativeLength)), secondLast.x + (m * (tailLength - cumulativeLength))
+            return True
         return True
-
 
     def __removeRedundantPoints(self, tailPoints, length): #Remove points that aren't part of the tail any more.
         cumulativeLength = 0.0
