@@ -200,3 +200,7 @@ include_directories(
 
 ## Add folders to be run by python nosetests
 # catkin_add_nosetests(test)
+
+include_directories(${catkin_INCLUDE_DIRS} include)
+
+add_library(simple_layer costmap_layer/simple_layer.cpp)
