@@ -61,7 +61,7 @@ class Display():
         for i in range(len(map1)):
             for j in range(len(map1[0])):
                 if map1[i, j] == 1:
-                    map1[i][j] = 100
+                    map1[i, j] = 100
                 elif map1[i, j] == 2:
                     map1[i, j] = 255
 
@@ -128,43 +128,19 @@ class Explore():
         
         self.goal_publisher = rospy.Publisher("/where_to_go", PoseWithCovarianceStamped ,queue_size=1)
 
-
         
-
 
     def _exploring_callback(self, msg):
         self.msg = msg.data
         rospy.loginfo("exploring_callback")
-        
-
-        
-        if self.map_set and self.current_odometry is not None and self.msg == "explore":
-            copy_odo = deepcopy(self.current_odometry)
-
-            goal_pose = self.calc_next_goal(copy_odo.pose.pose)
-            a_x, a_y, a_z, a_w = quaternion_from_euler(0, 0, goal_pose[2])
-            real_pose = self.translate_coord_back(goal_pose[0], goal_pose[1])
-
-            rospy.loginfo("current position: {}".format(self.translate_coord(copy_odo.pose.pose.position.x, copy_odo.pose.pose.position.y)))
-            rospy.loginfo("next move: {}".format(goal_pose))
-            
-            copy_odo.pose.pose.position.x = real_pose[0]
-            copy_odo.pose.pose.position.y = real_pose[1]
-            copy_odo.pose.pose.orientation.x = a_x
-            copy_odo.pose.pose.orientation.y = a_y
-            copy_odo.pose.pose.orientation.z = a_z
-            copy_odo.pose.pose.orientation.w = a_w
-            self.goal_publisher.publish(copy_odo)
-            #rospy.sleep(1)
-
-
-        
+    
 
     def _pose_callback(self, odometry):
         self.current_odometry = odometry
         if self.map_set:
             self.update_exploration_map([], self.current_odometry.pose.pose)
-
+            
+            
         
         
     def _odometry_callback(self, odo):
@@ -176,7 +152,7 @@ class Explore():
             a_x, a_y, a_z, a_w = quaternion_from_euler(0, 0, goal_pose[2])
             real_pose = self.translate_coord_back(goal_pose[0], goal_pose[1])
             
-            rospy.loginfo("current position: {}".format(self.translate_coord(copy_odo.pose.pose.position.x, copy_odo.pose.pose.position.y)))
+            rospy.loginfo("current position: {} cur orientation: {}".format(self.translate_coord(copy_odo.pose.pose.position.x, copy_odo.pose.pose.position.y), self.getHeading(copy_odo.pose.pose.orientation)))
             rospy.loginfo("next move: {}".format(goal_pose))
 
             copy_odo.pose.pose.position.x = real_pose[0]
@@ -290,10 +266,9 @@ class Explore():
         if self.previous_b_x is None:
             ImageDraw.Draw(self.img).polygon([(a_y, a_x), (b_y, b_x), (c_y, c_x)], outline=2, fill=2)
         else:
-            ImageDraw.Draw(self.img).polygon([(a_y, a_x), (b_y, b_x), (c_y, c_x)], outline=200, fill=200)
-            ImageDraw.Draw(self.img).polygon([(a_y, a_x), (b_y, b_x), (self.previous_b_y, self.previous_b_x), (self.previous_a_y, self.previous_a_x)], outline=200, fill=200)
-            ImageDraw.Draw(self.img).polygon([(self.previous_a_y, self.previous_a_x), (a_y, a_x), (self.previous_b_y, self.previous_b_x), (b_y, b_x)], outline=200, fill=200)
-            
+            ImageDraw.Draw(self.img).polygon([(a_y, a_x), (b_y, b_x), (c_y, c_x)], outline=2, fill=2)
+            ImageDraw.Draw(self.img).polygon([(a_y, a_x), (b_y, b_x), (self.previous_b_y, self.previous_b_x), (self.previous_a_y, self.previous_a_x)], outline=2, fill=2)
+            ImageDraw.Draw(self.img).polygon([(self.previous_a_y, self.previous_a_x), (a_y, a_x), (self.previous_b_y, self.previous_b_x), (b_y, b_x)], outline=2, fill=2)
             
         self.previous_b_x = b_x
         self.previous_b_y = b_y
