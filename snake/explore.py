@@ -105,6 +105,8 @@ class Explore():
         rospy.loginfo("Map received. %d X %d, %f px/m." % (occ_map.info.width, occ_map.info.height,
                        occ_map.info.resolution))
 
+        #occ_map.inflateObstacles()
+        
         
         self.map_width = occ_map.info.width
         self.map_height = occ_map.info.height
@@ -128,8 +130,6 @@ class Explore():
         
         self.goal_publisher = rospy.Publisher("/where_to_go", PoseWithCovarianceStamped ,queue_size=1)
 
-        
-
     def _exploring_callback(self, msg):
         self.msg = msg.data
         rospy.loginfo("exploring_callback")
@@ -149,19 +149,15 @@ class Explore():
             copy_odo = deepcopy(self.current_odometry)
             
             goal_pose = self.calc_next_goal(copy_odo.pose.pose)
-            a_x, a_y, a_z, a_w = quaternion_from_euler(0, 0, goal_pose[2])
-            real_pose = self.translate_coord_back(goal_pose[0], goal_pose[1])
-            
-            rospy.loginfo("current position: {} cur orientation: {}".format(self.translate_coord(copy_odo.pose.pose.position.x, copy_odo.pose.pose.position.y), self.getHeading(copy_odo.pose.pose.orientation)))
+            goal_pose = self.translate_coord_back(goal_pose[0], goal_pose[1])
+
+            rospy.loginfo("current position: {}".format(self.translate_coord(copy_odo.pose.pose.position.x, copy_odo.pose.pose.position.y)))
             rospy.loginfo("next move: {}".format(goal_pose))
 
-            copy_odo.pose.pose.position.x = real_pose[0]
-            copy_odo.pose.pose.position.y = real_pose[1]
-            copy_odo.pose.pose.orientation.x = a_x
-            copy_odo.pose.pose.orientation.y = a_y
-            copy_odo.pose.pose.orientation.z = a_z
-            copy_odo.pose.pose.orientation.w = a_w
-            self.goal_publisher.publish(copy_odo)
+            new_odo = copy_odo
+            new_odo.pose.pose.position.x = goal_pose[0]
+            new_odo.pose.pose.position.y = goal_pose[1]
+            self.goal_publisher.publish(new_odo)
         rospy.sleep(1)
         
     def set_robot_location(self, p):
@@ -213,9 +209,29 @@ class Explore():
                 if sum == math.pow(self.shrink_factor,2):
                     self.default_map[i, j] = 1
 
+
+        self.inflate_obstacles()
         self.grid = Grid(matrix = self.default_map)
         self.restart_exploration()
         
+
+
+
+    def inflate_obstacles(self):
+        temp_img = Image.fromarray(self.default_map.T, 'L')
+        dis= 4
+        
+        
+        for i in range(len(self.default_map)):
+            for j in range(len(self.default_map[0])):
+                if self.default_map[i][j] == 0:
+                    #if i > dis and j > dis and i < len(self.default_map)-dis and j < len(self.default_map) - dis:
+                    ImageDraw.Draw(temp_img).ellipse([(i-dis, j-dis), (i+dis, j+dis)],fill=0, outline=0)
+                    
+
+        self.default_map = np.array(temp_img).T
+        #return temp_img
+
         
 
     def update_exploration_map(self, scan_data, pose):
@@ -298,9 +314,8 @@ class Explore():
             j = x_start
             while j < x_end:
                 if j < self.map_width/self.shrink_factor and self.exploration_map[i][j] == 1:
-                    goal = self.get_goal(x, y, j, i)
-                    if goal is not None:
-                        return goal
+                    if self.is_reachable(x, y, j, i):
+                        return (j, i)
                     else:
                         self.exploration_map[i][j] = 0
                 j = j + 1
@@ -309,9 +324,8 @@ class Explore():
             j = x_start
             while i < y_end:
                 if i < self.map_height/self.shrink_factor and self.exploration_map[i][j] == 1:
-                    goal = self.get_goal(x, y, j, i)
-                    if goal is not None:
-                        return goal
+                    if self.is_reachable(x, y, j, i):
+                        return (j, i)
                     else:
                         self.exploration_map[i][j] = 0
                 i = i + 1        
@@ -320,9 +334,8 @@ class Explore():
             j = x_end
             while j > x_start:
                 if j >= 0 and self.exploration_map[i][j] == 1:
-                    goal = self.get_goal(x, y, j, i)
-                    if goal is not None:
-                        return goal
+                    if self.is_reachable(x, y, j, i):
+                        return (j, i)
                     else:
                         self.exploration_map[i][j] = 0
                 j = j - 1
@@ -331,9 +344,8 @@ class Explore():
             j = x_end
             while i > y_start:
                 if i >= 0 and self.exploration_map[i][j] == 1:
-                    goal = self.get_goal(x, y, j, i)
-                    if goal is not None:
-                        return goal
+                    if self.is_reachable(x, y, j, i):
+                        return (j, i)
                     else:
                         self.exploration_map[i][j] = 0
                 i = i - 1
@@ -540,4 +552,5 @@ if __name__ == '__main__':
     #e.set_map_and_reduce()
     rospy.spin()
     d.display(np.array(e.img).T)
+    #d.display(np.array(e.inflate_obstacles()).T)
 
