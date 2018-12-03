@@ -65,7 +65,7 @@ class nav_util(object):
                         self.tailCont.changePosition(self.tailCont.aStar(targetPoint))
                         if(self.goalIsCancelled):
                                 self.goalIsCancelled = False
-                                return
+                                return 1
 
         def cancel_goal(self):
                 self.move_base_client.cancel_goal()
@@ -196,16 +196,29 @@ class SnakeTailController(object):
 
         def changePosition(self, newPoint):
                 if (self.currentPoint is None): # If we've never recieved a position before
-                        self.currentPoint = newPoint # then we set the starting point
-                        self.tail = [newPoint]
+                        self.currentPoint = self.__roundToNearest(newPoint) # then we set the starting point
+                        self.tail = [self.__roundToNearest(newPoint)]
                         return
-                realnewPoint = Point(newPoint.x, newPoint.y, newPoint.z)
+                realnewPoint = self.__roundToNearest(Point(newPoint.x, newPoint.y, newPoint.z))
                 self.tail.reverse()
                 self.tail.append(realnewPoint)
                 self.tail.reverse()
                 self.currentPoint = realnewPoint
                 self.tail = self.__removeRedundantPoints(self.tail, self.tailLength)
                 #print(self.tail)
+
+        def __roundToNearest(self, unroundedPoint):
+                if self.__reachable(unroundedPoint):
+                        return unroundedPoint
+                else:
+                        shortestDistance = math.inf
+                        for p in self.mapSet:
+                                dist = self.__distance(p, unroundedPoint)
+                                if dist < shortestDistance:
+                                        shortestDistance = dist
+                                        closestPoint = p
+                        return closestPoint
+                        
 
         def increaseTailLength(self):
                 self.tailLength = self.tailLength + self.tailUnitLength()
