@@ -5,9 +5,9 @@ import actionlib
 
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from geometry_msgs.msg import PoseWithCovarianceStamped, Pose, Point
-from nav_msgs.msg import GetMap, OccupancyGrid, MapMetaData
-from snakeTail import snakeTailController
+from nav_msgs.msg import OccupancyGrid, MapMetaData
 import math
+import sys
 from copy import deepcopy
 
 class nav_util(object):
@@ -20,9 +20,6 @@ class nav_util(object):
         
         def __init__(self):
                 self.estimatedpose = PoseWithCovarianceStamped()
-                self._pose_subscriber = rospy.Subscriber("/amcl_pose", PoseWithCovarianceStamped,
-		                                          self._pose_callback,
-		                                          queue_size=1)
                 self.goalIsCancelled = False
                 self.move_base_client = actionlib.SimpleActionClient('move_base',MoveBaseAction)
                 rospy.loginfo("nav_util waiting for action server")
@@ -30,16 +27,26 @@ class nav_util(object):
                 rospy.loginfo("server found")
                 self.tailCont = SnakeTailController()
                 rospy.loginfo("nav_util waiting for a map...")
-                try:
-                        occupancy_map = rospy.wait_for_message("/map", OccupancyGrid, 20)
-                        self.tailCont.update_map(self.prepareMap(occupancy_map))
+                self._pose_subscriber = rospy.Subscriber("/amcl_pose", PoseWithCovarianceStamped,
+                                                  self._pose_callback,
+                                                  queue_size=1)
+
+                self.occupancy_map = None
+
+                # try:
+                #         occupancy_map = rospy.wait_for_message("/map", OccupancyGrid, 20)
+                #         self.tailCont.update_map(self.prepareMap(occupancy_map))
                         
-                except:
-                        rospy.logerr("Problem getting a map. Check that you have a map_server running: rosrun map_server map_server <mapname> " )
-                        sys.exit(1)
+                # except:
+                #         rospy.logerr("Problem getting a map. Check that you have a map_server running: rosrun map_server map_server <mapname> " )
+                #         sys.exit(1)
+
+        def init_map(self, map_):
+            self.occupancy_map = map_
+            self.tailCont.updateMap(self.prepareMap(self.occupancy_map))
 
         def _pose_callback(self, pose):
-                self.tailCont.setStartingPoint(pose.pose.pose.position)
+                self.tailCont.changePosition(pose.pose.pose.position)
                 self.estimatedpose = pose
 
         def where_am_i(self):
@@ -48,7 +55,7 @@ class nav_util(object):
         def go_to_pose(self, pose):  #This will fail if we haven't ever given the nav_util a pose for the robot to be at.
                 targetPoint = pose.pose.pose.position
                 currentTarget = self.tailCont.aStar(targetPoint)
-                while(currentTarget != self.estimatedPose.pose.pose.position):
+                while(currentTarget != self.estimatedpose.pose.pose.position):
                         goal = MoveBaseGoal()
                         goal.target_pose.header.frame_id = 'map'
                         goal.target_pose.header.stamp = rospy.Time.now()
@@ -67,17 +74,20 @@ class nav_util(object):
         def get_goalStatus(self):
                 return self.move_base_client.get_state()
 
-        def prepareMap(occGrid):
+        def prepareMap(self, occGrid):
                 metD = occGrid.info
                 outputSet = set()
                 origin = metD.origin.position
                 for y in range(metD.height):
                         for x in range(metD.width):
-                                if (occGrid.data[(y * metD.width) + x] < unoccupiedThreshold):
-                                        if (occGrid.data[(y * metD.width) + (x-1)] < unoccupiedThreshold) and (occGrid.data[((y+1) * metD.width) + x] < unoccupiedThreshold) and (occGrid.data[((y-1) * metD.width) + x] < unoccupiedThreshold) and (occGrid.data[(y * metD.width) + (x+1)] < unoccupiedThreshold) and (occGrid.data[((y-1) * metD.width) + (x+1)] < unoccupiedThreshold) and (occGrid.data[((y+1) * metD.width) + (x-1)] < unoccupiedThreshold) and (occGrid.data[((y-1) * metD.width) + (x-1)] < unoccupiedThreshold) and (occGrid.data[((y+1) * metD.width) + (x+1)] < unoccupiedThreshold):
-                                                #The disgusting above statement means that a point is only empty if both it AND the eight   adjacent points are empty.
-                                                #Hopefully this will prevent the robot from crashing into things.
-                                                outputSet.add(((x * metD.resolution + origin.x), (y * metD.resolution + origin.y)))
+                                if (occGrid.data[(y * metD.width) + x] < self.unoccupiedThreshold):
+                                        try:
+                                                if (occGrid.data[(y * metD.width) + (x-1)] < self.unoccupiedThreshold) and (occGrid.data[((y+1) * metD.width) + x] < self.unoccupiedThreshold) and (occGrid.data[((y-1) * metD.width) + x] < self.unoccupiedThreshold) and (occGrid.data[(y * metD.width) + (x+1)] < self.unoccupiedThreshold) and (occGrid.data[((y-1) * metD.width) + (x+1)] < self.unoccupiedThreshold) and (occGrid.data[((y+1) * metD.width) + (x-1)] < self.unoccupiedThreshold) and (occGrid.data[((y-1) * metD.width) + (x-1)] < self.unoccupiedThreshold) and (occGrid.data[((y+1) * metD.width) + (x+1)] < self.unoccupiedThreshold):
+                                                        #The disgusting above statement means that a point is only empty if both it AND the eight   adjacent points are empty.
+                                                        #Hopefully this will prevent the robot from crashing into things.
+                                                        outputSet.add(((x * metD.resolution + origin.x), (y * metD.resolution + origin.y)))
+                                        except:
+                                                dummy = 0
                 return outputSet
 
 
@@ -186,8 +196,8 @@ class SnakeTailController(object):
 
         def changePosition(self, newPoint):
                 if (self.currentPoint is None): # If we've never recieved a position before
-                        self.currentPoint = startingPoint # then we set the starting point
-                        self.tail = [startingPoint]
+                        self.currentPoint = newPoint # then we set the starting point
+                        self.tail = [newPoint]
                         return
                 realnewPoint = Point(newPoint.x, newPoint.y, newPoint.z)
                 self.tail.reverse()
