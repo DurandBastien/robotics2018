@@ -2,6 +2,8 @@
 
 import rospy
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, PoseArray,Pose, Point, Quaternion
+from tf.transformations import quaternion_from_euler
+
 from nav_msgs.msg import OccupancyGrid, Odometry
 from std_msgs.msg import String
 import sys
@@ -70,6 +72,7 @@ class Display():
 class Explore():
     def __init__(self, shrink_factor):
         self.shrink_factor = shrink_factor
+        
         self.current_odometry = None
         self.map_set = False
         self.msg = ""
@@ -84,13 +87,13 @@ class Explore():
         self.previous_b_y = None
         self.previous_a_y = None
         self.previous_a_x = None
-        self.previous_c_x = None
-        self.previous_c_y = None
         
         #used for pathfinding and reseting exploration map
         #0=obstacle 1=free
         self.default_map = None
 
+        self.range_of_vision = 0.5
+        
 
         rospy.loginfo("Waiting for a map...")
         try:
@@ -126,17 +129,43 @@ class Explore():
         self.goal_publisher = rospy.Publisher("/where_to_go", PoseWithCovarianceStamped ,queue_size=1)
 
 
+        
+
+
     def _exploring_callback(self, msg):
         self.msg = msg.data
         rospy.loginfo("exploring_callback")
         
 
+        
+        if self.map_set and self.current_odometry is not None and self.msg == "explore":
+            copy_odo = deepcopy(self.current_odometry)
+
+            goal_pose = self.calc_next_goal(copy_odo.pose.pose)
+            a_x, a_y, a_z, a_w = quaternion_from_euler(0, 0, goal_pose[2])
+            real_pose = self.translate_coord_back(goal_pose[0], goal_pose[1])
+
+            rospy.loginfo("current position: {}".format(self.translate_coord(copy_odo.pose.pose.position.x, copy_odo.pose.pose.position.y)))
+            rospy.loginfo("next move: {}".format(goal_pose))
+            
+            copy_odo.pose.pose.position.x = real_pose[0]
+            copy_odo.pose.pose.position.y = real_pose[1]
+            copy_odo.pose.pose.orientation.x = a_x
+            copy_odo.pose.pose.orientation.y = a_y
+            copy_odo.pose.pose.orientation.z = a_z
+            copy_odo.pose.pose.orientation.w = a_w
+            self.goal_publisher.publish(copy_odo)
+            #rospy.sleep(1)
+
+
+        
+
     def _pose_callback(self, odometry):
         self.current_odometry = odometry
-        
-        if self.map_set and self.current_odometry is not None:
+        if self.map_set:
             self.update_exploration_map([], self.current_odometry.pose.pose)
-         
+
+        
         
     def _odometry_callback(self, odo):
         rospy.loginfo("pose_callback. map_set: {}, msg.data: {}, current_odo is not None: {}".format(self.map_set, self.msg, self.current_odometry is not None))
@@ -144,15 +173,19 @@ class Explore():
             copy_odo = deepcopy(self.current_odometry)
             
             goal_pose = self.calc_next_goal(copy_odo.pose.pose)
-            goal_pose = self.translate_coord_back(goal_pose[0], goal_pose[1])
-
+            a_x, a_y, a_z, a_w = quaternion_from_euler(0, 0, goal_pose[2])
+            real_pose = self.translate_coord_back(goal_pose[0], goal_pose[1])
+            
             rospy.loginfo("current position: {}".format(self.translate_coord(copy_odo.pose.pose.position.x, copy_odo.pose.pose.position.y)))
             rospy.loginfo("next move: {}".format(goal_pose))
 
-            new_odo = copy_odo
-            new_odo.pose.pose.position.x = goal_pose[0]
-            new_odo.pose.pose.position.y = goal_pose[1]
-            self.goal_publisher.publish(new_odo)
+            copy_odo.pose.pose.position.x = real_pose[0]
+            copy_odo.pose.pose.position.y = real_pose[1]
+            copy_odo.pose.pose.orientation.x = a_x
+            copy_odo.pose.pose.orientation.y = a_y
+            copy_odo.pose.pose.orientation.z = a_z
+            copy_odo.pose.pose.orientation.w = a_w
+            self.goal_publisher.publish(copy_odo)
         rospy.sleep(1)
         
     def set_robot_location(self, p):
@@ -215,7 +248,6 @@ class Explore():
         # can be improved by taking the scan_data
 
         angle_of_vision = math.pi/2
-        range_of_vision = 1
         robot_orientation = self.getHeading(pose.orientation)
         robot_position = pose.position
 
@@ -237,8 +269,8 @@ class Explore():
         else:
             b_angle = robot_orientation - angle_of_vision/2
         
-        b_x = range_of_vision*math.cos(b_angle) + robot_position.x
-        b_y = range_of_vision*math.sin(b_angle) + robot_position.y
+        b_x = self.range_of_vision*math.cos(b_angle) + robot_position.x
+        b_y = self.range_of_vision*math.sin(b_angle) + robot_position.y
 
         
         if robot_orientation + angle_of_vision/2 > math.pi:
@@ -246,8 +278,8 @@ class Explore():
         else:
             a_angle = robot_orientation + angle_of_vision/2
         
-        a_x = range_of_vision*math.cos(a_angle) + robot_position.x
-        a_y = range_of_vision*math.sin(a_angle) + robot_position.y
+        a_x = self.range_of_vision*math.cos(a_angle) + robot_position.x
+        a_y = self.range_of_vision*math.sin(a_angle) + robot_position.y
         
         #transform the cords to array space
         b_x, b_y = self.translate_coord(b_x, b_y)
@@ -267,8 +299,6 @@ class Explore():
         self.previous_b_y = b_y
         self.previous_a_y = a_y
         self.previous_a_x = a_x
-        self.previous_c_x = c_x
-        self.previous_c_y = c_y
         
         
         
@@ -280,7 +310,7 @@ class Explore():
         self.exploration_map = np.array(self.img).T
         
         level = 0
-
+        
         rospy.loginfo("real_coord: ({}, {}), translated_coord: ({}, {})".format(pose.position.x, pose.position.y, x, y))
         while True:
             x_start = np.max([x - level, 0])
@@ -293,8 +323,9 @@ class Explore():
             j = x_start
             while j < x_end:
                 if j < self.map_width/self.shrink_factor and self.exploration_map[i][j] == 1:
-                    if self.is_reachable(x, y, j, i):
-                        return (j, i)
+                    goal = self.get_goal(x, y, j, i)
+                    if goal is not None:
+                        return goal
                     else:
                         self.exploration_map[i][j] = 0
                 j = j + 1
@@ -303,8 +334,9 @@ class Explore():
             j = x_start
             while i < y_end:
                 if i < self.map_height/self.shrink_factor and self.exploration_map[i][j] == 1:
-                    if self.is_reachable(x, y, j, i):
-                        return (j, i)
+                    goal = self.get_goal(x, y, j, i)
+                    if goal is not None:
+                        return goal
                     else:
                         self.exploration_map[i][j] = 0
                 i = i + 1        
@@ -313,8 +345,9 @@ class Explore():
             j = x_end
             while j > x_start:
                 if j >= 0 and self.exploration_map[i][j] == 1:
-                    if self.is_reachable(x, y, j, i):
-                        return (j, i)
+                    goal = self.get_goal(x, y, j, i)
+                    if goal is not None:
+                        return goal
                     else:
                         self.exploration_map[i][j] = 0
                 j = j - 1
@@ -323,8 +356,9 @@ class Explore():
             j = x_end
             while i > y_start:
                 if i >= 0 and self.exploration_map[i][j] == 1:
-                    if self.is_reachable(x, y, j, i):
-                        return (j, i)
+                    goal = self.get_goal(x, y, j, i)
+                    if goal is not None:
+                        return goal
                     else:
                         self.exploration_map[i][j] = 0
                 i = i - 1
@@ -338,7 +372,7 @@ class Explore():
                 level = 0
   
             
-
+            
     def translate_coord(self, x, y):
         x = int((x - self.map_origin_x)/(self.map_resolution*self.shrink_factor) + 0.5
                 + self.map_width/2.0)
@@ -364,13 +398,64 @@ class Explore():
         return len(path) > 0
 
 
+    def get_goal(self, x, y, x2, y2):
+        self.grid.cleanup()
+        start = self.grid.node(x, y)
+        end = self.grid.node(x2, y2)
+
+        path, runs = self.finder.find_path(start, end, self.grid)
+        if len(path) == 0:
+            return None
+
+        path = path
+        point = None
+        dis = 0
+        while True:
+            if len(path) ==0:
+                break
+            
+            point = path[0]
+            r_dis = math.sqrt(math.pow((x2 - point[0])*self.map_resolution*self.shrink_factor, 2) + math.pow((y2 - point[1])*self.map_resolution*self.shrink_factor, 2))
+            rospy.loginfo("point: {}, x2y2: ({},{}), dis: {}".format(point, x2,y2,r_dis))
+            
+            if r_dis == 0:
+                ang = 0
+            elif r_dis < self.range_of_vision:
+                ang = math.acos(((x2 - point[0])*self.map_resolution*self.shrink_factor)/r_dis)
+                if x2 - point[0] <= 0:
+                    ang = ang
+                    if y2 - point[1] <= 0:
+                        ang = ang - 3*math.pi/2
+                    else:
+                        ang = -(ang-math.pi/2)
+                else:
+                    if y2 - point[1] <= 0:
+                        ang = ang + math.copysign(1, x2 - point[0])*math.pi/2
+                    else:
+                        ang = ang
+                break
+            else:
+                path = path[(len(path)/2):]                            
+
+        return (point[0], point[1], ang)
+        
+        
 
 
 
-
-
-
-
+    def getHeading(self, q):
+        """
+        from pf_localisation.util.py
+        Get the robot heading in radians from a Quaternion representation.
+    
+        :Args:
+            | q (geometry_msgs.msg.Quaternion): a orientation about the z-axis
+        :Return:
+            | (double): Equivalent orientation about the z-axis in radians
+        """
+        yaw = math.atan2(2 * (q.x * q.y + q.w * q.z),
+                     q.w * q.w + q.x * q.x - q.y * q.y - q.z * q.z)
+        return yaw
 
 
 
@@ -398,20 +483,7 @@ class Explore():
 
 
 
-    def getHeading(self, q):
-        """
-        from pf_localisation.util.py
-        Get the robot heading in radians from a Quaternion representation.
     
-        :Args:
-            | q (geometry_msgs.msg.Quaternion): a orientation about the z-axis
-        :Return:
-            | (double): Equivalent orientation about the z-axis in radians
-        """
-        yaw = math.atan2(2 * (q.x * q.y + q.w * q.z),
-                     q.w * q.w + q.x * q.x - q.y * q.y - q.z * q.z)
-        return yaw
-
 
 
     def test(self):
