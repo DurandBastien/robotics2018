@@ -98,6 +98,7 @@ class Explore():
         self.local_costmap_width = None
         self.local_costmap_height = None
         self.local_costmap_height = None
+        self.local_costmap_setup = False
         
         
         self.range_of_vision = 0.5
@@ -140,11 +141,13 @@ class Explore():
 
 
     def _local_costmap_callback(self, costmap):
+        rospy.loginfo("local_costmap_callback")
         self.local_costmap = costmap.data
         self.local_costmap_origin = costmap.info.origin
         self.local_costmap_width = costmap.info.width
         self.local_costmap_height = costmap.info.height
         self.local_costmap_height = costmap.info.resolution
+        self.local_costmap_setup = True
         
     def _exploring_callback(self, msg):
         self.msg = msg.data
@@ -457,8 +460,11 @@ class Explore():
 
     
     def blocked_in_local_costmap(self, x, y):
-        local_x = x - self.local_costmap_origin.x
-        local_y = y - self.local_costmap_origin.y
+        if not self.local_costmap_setup:
+            return False
+        
+        local_x = x - self.local_costmap_origin.position.x
+        local_y = y - self.local_costmap_origin.position.y
 
         if local_x >= 0 and local_x < self.local_costmap_width and local_y >= 0 and local_y < self.local_costmap_height:
             if self.local_costmap_data[local_y*self.local_costmap_width + local_x] == 0 or self.local_costmap_data[local_y*self.local_costmap_width + local_x] == 255:
