@@ -26,6 +26,8 @@ private:
 
   void reconfigureCB(costmap_2d::GenericPluginConfig &config, uint32_t level);
 
+  int update;
+
   double mark_x_, mark_y_;
   dynamic_reconfigure::Server<costmap_2d::GenericPluginConfig> *dsrv_;
 };

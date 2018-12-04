@@ -14,15 +14,13 @@ void SimpleLayer::onInitialize()
 {
   ros::NodeHandle nh("~/" + name_);
   current_ = true;
-
-  or_sub = nh.subscribe("/or", 1000, &SimpleLayer::or_callback, this);
+  update = 0;
+  or_sub = nh.subscribe("/boxe", 1000, &SimpleLayer::or_callback, this);
   
   dsrv_ = new dynamic_reconfigure::Server<costmap_2d::GenericPluginConfig>(nh);
   dynamic_reconfigure::Server<costmap_2d::GenericPluginConfig>::CallbackType cb = boost::bind(
       &SimpleLayer::reconfigureCB, this, _1, _2);
   dsrv_->setCallback(cb);
-
-  ROS_INFO("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
 
 }
 
@@ -31,6 +29,13 @@ void SimpleLayer::or_callback(const geometry_msgs::PoseStamped::ConstPtr& msg)
   ROS_INFO("Pose: (%f, %f)", msg->pose.position.x, msg->pose.position.y);
   mark_x_ = msg->pose.position.x;
   mark_y_ = msg->pose.position.y;
+  if(update == 0){
+    update = 1;
+  }else{
+    if(msg->header.frame_id == "stop"){
+      update = 0;
+    }
+  }
 }
 
 void SimpleLayer::reconfigureCB(costmap_2d::GenericPluginConfig &config, uint32_t level)
@@ -57,8 +62,11 @@ void SimpleLayer::updateCosts(costmap_2d::Costmap2D& master_grid, int min_i, int
     return;
   unsigned int mx;
   unsigned int my;
-  if(master_grid.worldToMap(mark_x_, mark_y_, mx, my)){
-    master_grid.setCost(mx, my, LETHAL_OBSTACLE);
+  if(update == 1){
+    if(master_grid.worldToMap(mark_x_, mark_y_, mx, my)){
+      ROS_INFO("Pose: (%f, %f)", mark_x_, mark_y_);
+      master_grid.setCost(mx, my, LETHAL_OBSTACLE);
+    }
   }
 }
 
