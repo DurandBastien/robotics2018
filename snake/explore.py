@@ -332,7 +332,7 @@ class Explore():
             j = x_start
             while j < x_end:
                 if j < self.map_width/self.shrink_factor and self.exploration_map[i][j] == 1:
-                    if (inside_the_wall or self.is_reachable(x, y, j, i)) and self.far_enough(x, y, j, i):
+                    if (inside_the_wall or self.is_reachable(x, y, j, i)) and self.far_enough(x, y, j, i) and not self.blocked_in_local_costmap(j, i):
                         return (j, i)
                     else:
                         self.exploration_map[i][j] = 0
@@ -342,7 +342,7 @@ class Explore():
             j = x_start
             while i < y_end:
                 if i < self.map_height/self.shrink_factor and self.exploration_map[i][j] == 1:
-                    if (inside_the_wall or self.is_reachable(x, y, j, i)) and self.far_enough(x, y, j, i):
+                    if (inside_the_wall or self.is_reachable(x, y, j, i)) and self.far_enough(x, y, j, i) and not self.blocked_in_local_costmap(j, i):
                         return (j, i)
                     else:
                         self.exploration_map[i][j] = 0
@@ -352,7 +352,7 @@ class Explore():
             j = x_end
             while j > x_start:
                 if j >= 0 and self.exploration_map[i][j] == 1:
-                    if (inside_the_wall or self.is_reachable(x, y, j, i)) and self.far_enough(x, y, j, i):
+                    if (inside_the_wall or self.is_reachable(x, y, j, i)) and self.far_enough(x, y, j, i) and not self.blocked_in_local_costmap(j, i):
                         return (j, i)
                     else:
                         self.exploration_map[i][j] = 0
@@ -362,7 +362,7 @@ class Explore():
             j = x_end
             while i > y_start:
                 if i >= 0 and self.exploration_map[i][j] == 1:
-                    if (inside_the_wall or self.is_reachable(x, y, j, i)) and self.far_enough(x, y, j, i):
+                    if (inside_the_wall or self.is_reachable(x, y, j, i)) and self.far_enough(x, y, j, i) and not self.blocked_in_local_costmap(j, i):
                         return (j, i)
                     else:
                         self.exploration_map[i][j] = 0
@@ -445,12 +445,28 @@ class Explore():
 
         return (point[0], point[1], ang)
 
+
+
+    
     def far_enough(self, x, y, x2, y2):
         r_dis = math.sqrt(math.pow((x2 - x)*self.map_resolution*self.shrink_factor, 2) + math.pow((y2 - y)*self.map_resolution*self.shrink_factor, 2))
 
         return r_dis >= 0.25
 
+
+
+    
     def blocked_in_local_costmap(self, x, y):
+        local_x = x - self.local_costmap_origin.x
+        local_y = y - self.local_costmap_origin.y
+
+        if local_x >= 0 and local_x < self.local_costmap_width and local_y >= 0 and local_y < self.local_costmap_height:
+            if self.local_costmap_data[local_y*self.local_costmap_width + local_x] == 0 or self.local_costmap_data[local_y*self.local_costmap_width + local_x] == 255:
+                return False
+            else:
+                return True
+        else:
+            return False
         
         
 
