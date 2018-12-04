@@ -92,6 +92,14 @@ class Explore():
         #0=obstacle 1=free
         self.default_map = None
 
+        #local costmap
+        self.local_costmap = None
+        self.local_costmap_origin = None
+        self.local_costmap_width = None
+        self.local_costmap_height = None
+        self.local_costmap_height = None
+        
+        
         self.range_of_vision = 0.5
         
 
@@ -104,9 +112,6 @@ class Explore():
             sys.exit(1)
         rospy.loginfo("Map received. %d X %d, %f px/m." % (occ_map.info.width, occ_map.info.height,
                        occ_map.info.resolution))
-
-        #occ_map.inflateObstacles()
-        
         
         self.map_width = occ_map.info.width
         self.map_height = occ_map.info.height
@@ -118,7 +123,6 @@ class Explore():
                          (self.map_height / 2.0) * self.map_resolution*self.shrink_factor )
 
         self.set_map_and_reduce()
-
         
         self._odometry_sub = rospy.Subscriber("/odom", Odometry, self._odometry_callback, queue_size=1)
         
@@ -127,9 +131,21 @@ class Explore():
         self._pose_subscriber = rospy.Subscriber("/amcl_pose", PoseWithCovarianceStamped,
 		                                          self._pose_callback,
 		                                          queue_size=1)
+
+        #self._local_costmap_subscriber = rospy.Subscriber("/move_base/local_costmap/costmap", OccupancyGrid, self._local_costmap_callback, queue_size=1)
         
         self.goal_publisher = rospy.Publisher("/where_to_go", PoseWithCovarianceStamped ,queue_size=1)
 
+        
+
+
+    def _local_costmap_callback(self, costmap):
+        self.local_costmap = costmap.data
+        self.local_costmap_origin = costmap.info.origin
+        self.local_costmap_width = costmap.info.width
+        self.local_costmap_height = costmap.info.height
+        self.local_costmap_height = costmap.info.resolution
+        
     def _exploring_callback(self, msg):
         self.msg = msg.data
 
@@ -137,8 +153,6 @@ class Explore():
         self.current_odometry = odometry
         if self.map_set:
             self.update_exploration_map([], self.current_odometry.pose.pose)
-            
-            
         
         
     def _odometry_callback(self, odo):
@@ -318,7 +332,7 @@ class Explore():
             j = x_start
             while j < x_end:
                 if j < self.map_width/self.shrink_factor and self.exploration_map[i][j] == 1:
-                    if inside_the_wall or self.is_reachable(x, y, j, i):
+                    if (inside_the_wall or self.is_reachable(x, y, j, i)) and self.far_enough(x, y, j, i):
                         return (j, i)
                     else:
                         self.exploration_map[i][j] = 0
@@ -328,7 +342,7 @@ class Explore():
             j = x_start
             while i < y_end:
                 if i < self.map_height/self.shrink_factor and self.exploration_map[i][j] == 1:
-                    if inside_the_wall or self.is_reachable(x, y, j, i):
+                    if (inside_the_wall or self.is_reachable(x, y, j, i)) and self.far_enough(x, y, j, i):
                         return (j, i)
                     else:
                         self.exploration_map[i][j] = 0
@@ -338,7 +352,7 @@ class Explore():
             j = x_end
             while j > x_start:
                 if j >= 0 and self.exploration_map[i][j] == 1:
-                    if inside_the_wall or self.is_reachable(x, y, j, i):
+                    if (inside_the_wall or self.is_reachable(x, y, j, i)) and self.far_enough(x, y, j, i):
                         return (j, i)
                     else:
                         self.exploration_map[i][j] = 0
@@ -348,7 +362,7 @@ class Explore():
             j = x_end
             while i > y_start:
                 if i >= 0 and self.exploration_map[i][j] == 1:
-                    if inside_the_wall or self.is_reachable(x, y, j, i):
+                    if (inside_the_wall or self.is_reachable(x, y, j, i)) and self.far_enough(x, y, j, i):
                         return (j, i)
                     else:
                         self.exploration_map[i][j] = 0
@@ -430,9 +444,15 @@ class Explore():
                 #ang = 
 
         return (point[0], point[1], ang)
-        
-        
 
+    def far_enough(self, x, y, x2, y2):
+        r_dis = math.sqrt(math.pow((x2 - x)*self.map_resolution*self.shrink_factor, 2) + math.pow((y2 - y)*self.map_resolution*self.shrink_factor, 2))
+
+        return r_dis >= 0.25
+
+    def blocked_in_local_costmap(self, x, y):
+        
+        
 
 
     def getHeading(self, q):
