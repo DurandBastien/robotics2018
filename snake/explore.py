@@ -132,8 +132,6 @@ class Explore():
 
     def _exploring_callback(self, msg):
         self.msg = msg.data
-        rospy.loginfo("exploring_callback")
-    
 
     def _pose_callback(self, odometry):
         self.current_odometry = odometry
@@ -144,16 +142,16 @@ class Explore():
         
         
     def _odometry_callback(self, odo):
-        rospy.loginfo("pose_callback. map_set: {}, msg.data: {}, current_odo is not None: {}".format(self.map_set, self.msg, self.current_odometry is not None))
         if self.map_set and self.current_odometry is not None and self.msg == "explore":
             copy_odo = deepcopy(self.current_odometry)
             
             goal_pose = self.calc_next_goal(copy_odo.pose.pose)
+
+            rospy.loginfo("current_array_pose: {}, goal_array_pose: {}".format(self.translate_coord(copy_odo.pose.pose.position.x, copy_odo.pose.pose.position.y), goal_pose))
+            
             goal_pose = self.translate_coord_back(goal_pose[0], goal_pose[1])
-
-            rospy.loginfo("current position: {}".format(self.translate_coord(copy_odo.pose.pose.position.x, copy_odo.pose.pose.position.y)))
-            rospy.loginfo("next move: {}".format(goal_pose))
-
+            rospy.loginfo("current_real_pose: {}, goal_real_pose: {}".format((copy_odo.pose.pose.position.x, copy_odo.pose.pose.position.y), goal_pose))
+            
             new_odo = copy_odo
             new_odo.pose.pose.position.x = goal_pose[0]
             new_odo.pose.pose.position.y = goal_pose[1]
@@ -292,7 +290,7 @@ class Explore():
         self.previous_a_x = a_x
         
         
-        
+                 
         
     def calc_next_goal(self, pose):
         #where the search will start (the location of robot/pose)
@@ -301,8 +299,14 @@ class Explore():
         self.exploration_map = np.array(self.img).T
         
         level = 0
-        
-        rospy.loginfo("real_coord: ({}, {}), translated_coord: ({}, {})".format(pose.position.x, pose.position.y, x, y))
+
+        inside_the_wall = False
+        go_to = 1 #go to unexplored point
+        if self.default_map[y][x] == 0:
+            rospy.loginfo("calc_next_goal: inside the wall")
+            inside_the_wall = True
+            go_to = 2 #go to explored point
+
         while True:
             x_start = np.max([x - level, 0])
             x_end = np.min([x + level, self.map_width/self.shrink_factor - 1])
@@ -314,7 +318,7 @@ class Explore():
             j = x_start
             while j < x_end:
                 if j < self.map_width/self.shrink_factor and self.exploration_map[i][j] == 1:
-                    if self.is_reachable(x, y, j, i):
+                    if inside_the_wall or self.is_reachable(x, y, j, i):
                         return (j, i)
                     else:
                         self.exploration_map[i][j] = 0
@@ -324,7 +328,7 @@ class Explore():
             j = x_start
             while i < y_end:
                 if i < self.map_height/self.shrink_factor and self.exploration_map[i][j] == 1:
-                    if self.is_reachable(x, y, j, i):
+                    if inside_the_wall or self.is_reachable(x, y, j, i):
                         return (j, i)
                     else:
                         self.exploration_map[i][j] = 0
@@ -334,7 +338,7 @@ class Explore():
             j = x_end
             while j > x_start:
                 if j >= 0 and self.exploration_map[i][j] == 1:
-                    if self.is_reachable(x, y, j, i):
+                    if inside_the_wall or self.is_reachable(x, y, j, i):
                         return (j, i)
                     else:
                         self.exploration_map[i][j] = 0
@@ -344,7 +348,7 @@ class Explore():
             j = x_end
             while i > y_start:
                 if i >= 0 and self.exploration_map[i][j] == 1:
-                    if self.is_reachable(x, y, j, i):
+                    if inside_the_wall or self.is_reachable(x, y, j, i):
                         return (j, i)
                     else:
                         self.exploration_map[i][j] = 0
@@ -380,12 +384,11 @@ class Explore():
 
         path, runs = self.finder.find_path(start, end, self.grid)
 
-        #rospy.loginfo("operations: {}, path length: {}".format(runs, path))
-        
         return len(path) > 0
 
 
     def get_goal(self, x, y, x2, y2):
+        min_dis = 0.25
         self.grid.cleanup()
         start = self.grid.node(x, y)
         end = self.grid.node(x2, y2)
@@ -403,11 +406,10 @@ class Explore():
             
             point = path[0]
             r_dis = math.sqrt(math.pow((x2 - point[0])*self.map_resolution*self.shrink_factor, 2) + math.pow((y2 - point[1])*self.map_resolution*self.shrink_factor, 2))
-            rospy.loginfo("point: {}, x2y2: ({},{}), dis: {}".format(point, x2,y2,r_dis))
-            
+
             if r_dis == 0:
                 ang = 0
-            elif r_dis < self.range_of_vision:
+            elif r_dis <= self.range_of_vision and r_dis >= min_dis:
                 ang = math.acos(((x2 - point[0])*self.map_resolution*self.shrink_factor)/r_dis)
                 if x2 - point[0] <= 0:
                     ang = ang
@@ -421,8 +423,11 @@ class Explore():
                     else:
                         ang = ang
                 break
+            elif r_dis >= min_dis:
+                path = path[(len(path) - 1):]
             else:
-                path = path[(len(path)/2):]                            
+                point = path[0]
+                #ang = 
 
         return (point[0], point[1], ang)
         
