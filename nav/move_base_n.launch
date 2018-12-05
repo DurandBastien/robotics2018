@@ -1,0 +1,15 @@
+<launch>
+<node pkg="amcl" type="amcl" name="amcl" args="scan:=base_scan"/> 
+<param name="min_dist_d" value="0.05" />
+
+
+<node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
+	<rosparam file="/home/maija/robotics/src/nav/costmap_common_params.yaml" command="load" ns="global_costmap" /> 
+    <rosparam file="/home/maija/robotics/src/nav/costmap_common_params.yaml" command="load" ns="local_costmap" />
+    <rosparam file="/home/maija/robotics/src/nav/global_costmap_params.yaml" command="load" /> 
+    <rosparam file="/home/maija/robotics/src/nav/local_costmap_params.yaml" command="load" /> 
+    <rosparam file="/home/maija/robotics/src/nav/base_local_planner_params.yaml" command="load" />
+    <!-- <rosparam file="/home/maija/robotics/src/nav/move_base_params.yaml" command="load" /> -->
+</node>
+
+</launch>
