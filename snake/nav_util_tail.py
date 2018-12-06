@@ -50,8 +50,10 @@ class nav_util(object):
         self.tailCont.updateMap(self.prepareMap(self.occupancy_map))
 
     def _pose_callback(self, pose):
-        self.tailCont.changePosition(pose.pose.pose.position)
         self.estimatedpose = pose
+        rospy.loginfo(self.estimatedpose)
+        self.tailCont.changePosition(pose.pose.pose.position)
+
 
     def where_am_i(self):
         return self.estimatedpose
@@ -70,8 +72,8 @@ class nav_util(object):
                 # rospy.loginfo(res)
 
         targetPoint = pose.pose.pose.position
-        rospy.loginfo('targetPoint obtained')
-        currentTarget = self.tailCont.aStar(targetPoint)
+        rospy.loginfo('targetPoint: ' + str(targetPoint))
+        currentTarget = self.tailCont.heapAStar(targetPoint)  #The first line to change if you want to use the alternative (worse) pathfinding algorithm.
         rospy.loginfo('currentTarget: ' + str(currentTarget))
         while self.tailCont.roundToNearest(targetPoint) != self.tailCont.currentPoint:
             goal.target_pose.header.frame_id = 'map'
@@ -85,8 +87,8 @@ class nav_util(object):
             res = self.move_base_client.wait_for_result()
             rospy.loginfo('result recieved')
             rospy.loginfo(res)
-            self.tailCont.changePosition(self.tailCont.aStar(targetPoint))
-            currentTarget = self.tailCont.heapAStar(targetPoint)  #The line to change if you want to use the alternative (worse) pathfinding algorithm.
+            self.tailCont.changePosition(self.tailCont.heapAStar(targetPoint))  #The second line to change if you want to use the alternative (worse) pathfinding algorithm.
+            currentTarget = self.tailCont.heapAStar(targetPoint)  #The third line to change if you want to use the alternative (worse) pathfinding algorithm.
             rospy.loginfo('currentTarget: ' + str(currentTarget))
             if self.goalIsCancelled:
                 self.goalIsCancelled = False
@@ -117,7 +119,7 @@ class nav_util(object):
                                 # x = (math.floor((x_pix - map_origin_x) / map_resolution + 0.5) + map_width / 2);
                                 # y = (math.floor((y_pix - map_origin_y) / map_resolution + 0.5) + map_height / 2);
 
-                outputSet.add((x, y))
+                outputSet.add(Point(x, y, 0.0))
 
                 # outputSet = set()
                 # origin = metD.origin.position
@@ -134,7 +136,7 @@ class nav_util(object):
                 #                                 dummy = 0
                 # rospy.loginfo(str(outputSet))
 
-        rospy.loginfo(outputSet)
+        #rospy.loginfo(outputSet)
         return outputSet
 
 
@@ -172,7 +174,7 @@ class SnakeTailController(object):
             mapNodes.append((start[0], start[2], self.distanceUnit, start[0]))
                              # (Point, tail, cost, startingMove)
         while True:
-            lowestCost = math.inf
+            lowestCost = float('inf')
             for node in mapNodes:
                 if node[2] < lowestCost:
                     bestNode = node
@@ -208,10 +210,12 @@ class SnakeTailController(object):
                 heapq.heappush(frontier, FrontierItem(self.distanceUnit + self.__distance(newP[0], targetPoint), currentItem.costToReach + self.distanceUnit, newP[0], currentItem.startingMove, newP[2]))
 
     def __roundToNearest(self, unroundedPoint):
+	rospy.loginfo(str(self.mapSet))
+	rospy.loginfo("Hello")
         if self.__reachable(unroundedPoint):
             return unroundedPoint
         else:
-            shortestDistance = math.inf
+            shortestDistance = float('inf')
             for p in self.mapSet:
                 dist = self.__distance(p, unroundedPoint)
                 if dist < shortestDistance:
