@@ -1,18 +1,25 @@
 import math
 import copy
+import heapq
 
 class Point(object): #Having to reinvent the wheel here because ROS isn't working on my laptop, will integrate this with the actual ROS stuff next time I'm with the team.
     x = 0.0
     y = 0.0
     z = 0.0
     def __init__(self, xPos, yPos, zPos = 0):
+        try:
+            dummy = xPos + yPos
+        except:
+            print("Initialising a Point improperly!")
+            error = "X: " + str(xPos) + "  Y: " + str(yPos)
+            raise Exception(error)
         self.x = xPos
         self.y = yPos
         self.z = zPos
     def __str__(self):
-        return ("(" + str(self.x) + "," + str(self.y) + ")")
+        return ("P:(" + str(self.x) + "," + str(self.y) + ")")
     def __repr__(self):
-        return ("(" + str(self.x) + "," + str(self.y) + ")")
+        return ("P:(" + str(self.x) + "," + str(self.y) + ")")
     
 # class SnakeTailController is designed to do the basic handling of the snake tail.
 # Initialise it with the Point that the robot starts at.
@@ -27,27 +34,27 @@ class Point(object): #Having to reinvent the wheel here because ROS isn't workin
 #   Which will always be distanceUnit away in one of the four cardinal directions.
 
 def test():
-    teeeest = SnakeTailController()
-    teeeest.setStartingPoint(Point(0.0, 0.0))
-    teeeest.changePosition(teeeest.aStar(Point(0.05, 0.0)))
+    #teeeest = SnakeTailController()
+    #teeeest.setStartingPoint(Point(0.0, 0.0))
+    #teeeest.changePosition(teeeest.dijkstra(Point(0.05, 0.0)))
     snake = SnakeTailController(Point(0.0, 0.0))
-    snake.changePosition(snake.aStar(Point(0.05, 0.0)))
+    snake.changePosition(snake.dijkstra(Point(0.06, 0.0)))
     print("location: " + str(snake.currentPoint))
-    snake.changePosition(snake.aStar(Point(0.05, 0.05)))
+    snake.changePosition(snake.dijkstra(Point(0.05, 0.05)))
     print("location: " + str(snake.currentPoint))
-    snake.changePosition(snake.aStar(Point(0.05, 0.1)))
+    snake.changePosition(snake.dijkstra(Point(0.05, 0.1)))
     print("location: " + str(snake.currentPoint))
-    snake.changePosition(snake.aStar(Point(0.1, 0.1)))
+    snake.changePosition(snake.dijkstra(Point(0.1, 0.1)))
     print("location: " + str(snake.currentPoint))
-    snake.changePosition(snake.aStar(Point(0.1, 0.05)))
+    snake.changePosition(snake.dijkstra(Point(0.11, 0.05)))
     print("locaation: " + str(snake.currentPoint))
-    snake.changePosition(snake.aStar(Point(0.0, 0.05)))
+    snake.changePosition(snake.dijkstra(Point(0.0, 0.05)))
     print("location: " + str(snake.currentPoint))
-    snake.changePosition(snake.aStar(Point(0.0, 0.05)))
+    snake.changePosition(snake.dijkstra(Point(0.0, 0.05)))
     print("location: " + str(snake.currentPoint))
-    snake.changePosition(snake.aStar(Point(0.0, 0.05)))
+    snake.changePosition(snake.dijkstra(Point(0.0, 0.05)))
     print("location: " + str(snake.currentPoint))
-    snake.changePosition(snake.aStar(Point(0.0, 0.05)))
+    snake.changePosition(snake.dijkstra(Point(0.0, 0.05)))
     print("location: " + str(snake.currentPoint))
     print(snake.tail)
     print(snake.isLegalMove(snake.tail, Point(0.0,0.05)))
@@ -56,7 +63,7 @@ def test():
 
 class SnakeTailController(object):
 
-    mapSet = set([(0.0, 0.0), (0.05, 0.05), (0.05, 0.0), (0.0, 0.05), (0.0, 0.1), (0.05, 0.1), (0.1, 0.0), (0.1, 0.05), (0.1, 0.1)]) #FOR TESTING ONLY!
+    mapSet = set([Point(0.0, 0.0), Point(0.05, 0.05), Point(0.05, 0.0), Point(0.0, 0.05), Point(0.0, 0.1), Point(0.05, 0.1), Point(0.1, 0.0), Point(0.1, 0.05), Point(0.1, 0.1)]) #FOR TESTING ONLY!
     #OK, so before this can work with the actual map
     #We'll need some way to convert the map to a grid of points.
     #And create a set that only includes the points that actually exist.
@@ -78,16 +85,60 @@ class SnakeTailController(object):
             self.currentPoint = startingPoint
             self.tail = [startingPoint]
 
-    def aStar(self, targetPoint):
+
+    def dijkstra(self, fakeTargetPoint):
+        targetPoint = self.__roundToNearest(fakeTargetPoint)
+        mapNodes = []
+        starters = self.__adjacentPoints(self.currentPoint, self, 1)
+        for start in starters:
+            mapNodes.append((start[0], start[2], self.distanceUnit, start[0]))
+                             #(Point, tail, cost, startingMove)
+        while True:
+            lowestCost = math.inf
+            for node in mapNodes:
+                if node[2] < lowestCost:
+                    bestNode = node
+                    lowestCost = node[2]
+                    mapNodes.remove(bestNode)
+            if(self.__distance(bestNode[0], targetPoint) == 0):
+                return bestNode[3]
+            #print(bestNode)
+            adjPoints = self.__adjacentPoints(bestNode[0], bestNode[1], 1)
+            for p in adjPoints:
+                mapNodes.append((p[0], p[2], bestNode[2] + self.distanceUnit, bestNode[3]))
+                
+    def heapAStar(self, fakeTargetPoint):
+        targetPoint = self.__roundToNearest(fakeTargetPoint)
         if (abs(self.currentPoint.x - targetPoint.x) <= (self.distanceUnit/2)) and (abs(self.currentPoint.y - targetPoint.y) <= (self.distanceUnit/2)):
+            return self.currentPoint
+        newPoints = self.__adjacentPoints(self.currentPoint, self, 1)
+        frontier = []
+        for newP in newPoints:
+            heapq.heappush(frontier, FrontierItem((self.distanceUnit + self.__distance(newP[0], targetPoint)), self.distanceUnit, newP[0], newP[0], newP[2]))
+                                                  #Alright, so an entry in the frontier here is of the weird class at the bottom of this file.
+            #print(str(frontier))
+        while(True):
+            currentItem = heapq.heappop(frontier)
+            if(self.__distance(currentItem.location, targetPoint) == 0):
+                return currentItem.startingMove
+            newPoints = self.__adjacentPoints(currentItem.location, currentItem.tail, 1)
+            for newP in newPoints:
+                temp = copy.deepcopy(self)
+                temp.changePosition(newP[0])
+                heapq.heappush(frontier, FrontierItem((self.distanceUnit + self.__distance(newP[0], targetPoint)), (currentItem.costToReach + self.distanceUnit), newP[0], currentItem.startingMove, newP[2]))            
+                
+    def aStar(self, fakeTargetPoint): #DEPRECATED USE heapAStar INSTEAD!
+        print("Deprecated method aStar being used!")
+        print("Use heapAStar instead!")
+        targetPoint = self.__roundToNearest(fakeTargetPoint)
+        if (abs(self.currentPoint.x - targetPoint.x) <= (self.distanceUnit/2)) and (abs(self.currentPoint.y - targetPoint.y) <= (self.distanceUnit/2)):
+            print(self.currentPoint)
             return self.currentPoint
         newPoints = self.__adjacentPoints(self.currentPoint, self, 1)
         #print("NP: " + str(newPoints))
         frontier = []
         for newP in newPoints:
-            temp = copy.deepcopy(self)
-            temp.changePosition(Point(newP[0], newP[1]))
-            frontier.append((newP[0], newP[1], self.distanceUnit, Point(newP[0], newP[1]), temp))
+            frontier.append((newP[0].x, newP[0].y, self.distanceUnit, Point(newP[0].x, newP[0].y), newP[2]))
         #print("Frontier:")
         #print(frontier)
         #print(list(frontier))
@@ -96,11 +147,15 @@ class SnakeTailController(object):
             counter = counter + 1
             bestScore = 999999999999999999999
             #print(str(counter) + " | " + str(list(frontier)))
-            bestP = list(frontier)[0]  #Each point in the frontier is a tuple of the form: (X, Y, cost-to-get-there, first-move-to-get-there, SnakeTailController-with-tail-once-there).
+            try:
+                bestP = list(frontier)[0]  #Each point in the frontier is a tuple of the form: (X, Y, cost-to-get-there, first-move-to-get-there, SnakeTailController-with-tail-once-there).
+            except:
+                return self.currentPoint
             bestTail = SnakeTailController(Point(0.0, 0.0)) #Ignore this, I just need to include this because otherwise python guesses the type wrong.
             for p in frontier:
+                #print(str(p))
                 if self.__distance(Point(p[0], p[1]), targetPoint) == 0:
-                    #print(str(p[2]))
+                    #print(str(p[3]))
                     return p[3]
                 if p[2] < bestScore:
                     bestScore = p[2]
@@ -111,12 +166,27 @@ class SnakeTailController(object):
             frontier.remove(bestP)
             if self.__distance(bestPoint, targetPoint) < self.distanceUnit * 0.8:
                 #print(str(bestP[2]))
+                print(str(bestStartingMove))
                 return bestStartingMove
             else:
                 bestTail.changePosition(bestPoint)
                 newPoints = self.__adjacentPoints(bestPoint, bestP[4], bestP[2] + self.distanceUnit)
                 for newP in newPoints:
-                    frontier.append((newP[0], newP[1], bestP[2] + self.distanceUnit, bestStartingMove, bestTail))
+                    frontier.append((newP[0].x, newP[0].y, bestP[2] + self.distanceUnit, bestStartingMove, bestTail))
+
+    def __roundToNearest(self, unroundedPoint):
+        if self.__reachable(unroundedPoint):
+            #print(str(unroundedPoint))
+            return unroundedPoint
+        else:
+            shortestDistance = math.inf
+            for p in self.mapSet:
+                dist = self.__distance(p, unroundedPoint)
+                if dist < shortestDistance:
+                    shortestDistance = dist
+                    closestPoint = p
+            #print(str(closestPoint))
+            return closestPoint
 
     # Use this to update the map when a new dynamic obstacle is detected.
     def updateMap(self, newMap):
@@ -125,29 +195,19 @@ class SnakeTailController(object):
     def __adjacentPoints(self, p, snakeTail, weight = 0):
         #print(p)
         returnSet = set()
-        if self.__reachable((p.x + self.distanceUnit, p.y)):
-            tailA = copy.deepcopy(snakeTail)
-            if tailA.isLegalMove(tailA.tail, Point(p.x + self.distanceUnit, p.y)):
-                tailA.changePosition(Point(p.x + self.distanceUnit, p.y))
-                returnSet.add((p.x + self.distanceUnit, p.y, weight, tailA))
-        if self.__reachable((p.x - self.distanceUnit, p.y)):
-            tailB = copy.deepcopy(snakeTail)
-            if tailB.isLegalMove(tailB.tail, Point(p.x - self.distanceUnit, p.y)):
-                tailB.changePosition(Point(p.x - self.distanceUnit, p.y))
-                returnSet.add((p.x - self.distanceUnit, p.y, weight, tailB))
-        if self.__reachable((p.x, p.y + self.distanceUnit)):
-            tailC = copy.deepcopy(snakeTail)
-            if tailC.isLegalMove(tailC.tail, Point(p.x, p.y + self.distanceUnit)):
-                tailC.changePosition(Point(p.x, p.y + self.distanceUnit))
-                returnSet.add((p.x, p.y + self.distanceUnit, weight, tailC))
-        if self.__reachable((p.x, p.y - self.distanceUnit)):
-            tailD = copy.deepcopy(snakeTail)
-            if tailD.isLegalMove(tailD.tail, Point(p.x, p.y - self.distanceUnit)):
-                tailD.changePosition(Point(p.x, p.y - self.distanceUnit))
-                returnSet.add((p.x, p.y - self.distanceUnit, weight, tailD))
-        #print(returnSet)
-        return returnSet
-        
+        pointSet = set()
+        pointSet.add(self.__roundToNearest(Point(p.x + self.distanceUnit, p.y)))
+        pointSet.add(self.__roundToNearest(Point(p.x - self.distanceUnit, p.y)))
+        pointSet.add(self.__roundToNearest(Point(p.x, p.y + self.distanceUnit)))
+        pointSet.add(self.__roundToNearest(Point(p.x, p.y - self.distanceUnit)))
+        for q in pointSet:
+            if self.__reachable(q):
+                tailA = copy.deepcopy(snakeTail)
+                if tailA.isLegalMove(tailA.tail, q):
+                    tailA.changePosition(q)
+                    returnSet.add((Point(q.x, q.y), weight, tailA))
+        #Each item in the returned set is a tuple of the form (point, weight(UNUSED), tail)
+        return returnSet        
 
     def __reachable(self, point):
         return (point in self.mapSet)
@@ -159,7 +219,7 @@ class SnakeTailController(object):
                     #It's just: how much longer do we make the tail each time we eat something?
 
     def changePosition(self, newPoint):
-        realnewPoint = Point(newPoint.x, newPoint.y, newPoint.z)
+        realnewPoint = self.__roundToNearest(newPoint)
         self.tail.reverse()
         self.tail.append(realnewPoint)
         self.tail.reverse()
@@ -171,6 +231,7 @@ class SnakeTailController(object):
         self.tailLength = self.tailLength + self.tailUnitLength()
 
     def __distance(self, pointA, pointB):
+        #print(str(pointA) + "   " + str(pointB)) 
         xOffset = pointA.x - pointB.x
         yOffset = pointA.y - pointB.y
         return math.sqrt((xOffset * xOffset) + (yOffset * yOffset))
@@ -228,3 +289,22 @@ class SnakeTailController(object):
                         cumulativeLength = cumulativeLength + self.__distance(tailPoints[index], tailPoints[index - 1])
 
         return tailPoints
+
+
+class FrontierItem(object): #Need to define this rather trivial data container so that I can tell python explicitly how to sort it.
+    costPlusDistance = 0.0
+    costToReach = 0.0
+    location = Point(0.0, 0.0, 0.0)
+    startingMove = Point(0.0, 0.0, 0.0)
+    tail = None
+
+    def __init__(self, cpd, ctr, loc, strM, tl):
+        self.costPlusDistance = cpd
+        self.costToReach = ctr
+        self.location = loc
+        self.startingMove = strM
+        self.tail = tl
+
+
+    def __lt__(self, other):
+        return self.costPlusDistance < other.costPlusDistance
