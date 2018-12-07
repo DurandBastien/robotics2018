@@ -31,7 +31,7 @@ class nav_util(object):
 		goal.target_pose.header.stamp = rospy.Time.now()
 		goal.target_pose.pose = pose.pose.pose
 		self.move_base_client.send_goal(goal)
-		#self.move_base_client.wait_for_result()
+		self.move_base_client.wait_for_result()
 
 	def cancel_goal(self):
 		self.move_base_client.cancel_goal()
