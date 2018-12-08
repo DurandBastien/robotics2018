@@ -8,6 +8,7 @@ from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from geometry_msgs.msg import PoseWithCovarianceStamped, Pose, Point
 from nav_msgs.msg import OccupancyGrid, MapMetaData
 import math
+import numpy
 import sys
 import copy
 
@@ -15,7 +16,6 @@ import copy
 class nav_util(object):
 
     unoccupiedThreshold = 99  # A ROS Occupancy grid has a "probability of being occupied" for each point.
-
                                  # This is represented as a percentage.
                                  # So 100 is "we know for sure that this point is occupied".
                                  # unoccupiedThreshold is "how low do we need the % to be to consider the point empty for the purpose of pathfinding".
@@ -34,13 +34,11 @@ class nav_util(object):
         self._pose_subscriber = rospy.Subscriber('/amcl_pose',
                 PoseWithCovarianceStamped, self._pose_callback,
                 queue_size=1)
-
         self.occupancy_map = None
 
                 # try:
                 #         occupancy_map = rospy.wait_for_message("/map", OccupancyGrid, 20)
                 #         self.tailCont.update_map(self.prepareMap(occupancy_map))
-
                 # except:
                 #         rospy.logerr("Problem getting a map. Check that you have a map_server running: rosrun map_server map_server <mapname> " )
                 #         sys.exit(1)
@@ -101,25 +99,45 @@ class nav_util(object):
     def get_goalStatus(self):
         return self.move_base_client.get_state()
 
-    def prepareMap(self, occupancy_map):
-        map_info = occupancy_map.info
+    def prepareMap(self, occupancy_map): # prepareMap(), AKA the place where code goes to die.
+        #Some of the below code shamelessly stolen from Lukas' explore script.
+        shrink_factor = 5
         map_width = occupancy_map.info.width
         map_height = occupancy_map.info.height
-        map_resolution = occupancy_map.info.resolution  # in m per pixel
-        map_origin_x = occupancy_map.info.origin.position.x + map_width / 2.0 * map_resolution
-        map_origin_y = occupancy_map.info.origin.position.y + map_height / 2.0 * map_resolution
+        default_map = numpy.zeros((map_height/shrink_factor, map_width/shrink_factor), dtype = numpy.uint8)
+        for i in range(0, len(default_map)):
+            for j in range(0, len(default_map[0])):
+                sum = 0
+                for k in range(i*shrink_factor, i*shrink_factor+shrink_factor):
+                    for l in range(j*shrink_factor, j*shrink_factor + shrink_factor):
+                        cell = map_data[k*map_width + l]
+                        if cell < 0.196 and cell >= 0:
+                            sum = sum + 1
+                if sum == math.pow(shrink_factor,2):
+                    default_map[i, j] = 1
         outputSet = set()
-        for (counter, cell_prob) in enumerate(occupancy_map.data):
-            if cell_prob >= 0 and cell_prob < 0.196:
-                x_pix = counter % map_width
-                y_pix = (counter - x_pix) / map_height
-                x = x_pix * map_info.resolution + map_info.origin.position.x
-                y = y_pix * (map_info.resolution + 0.004) + map_info.origin.position.y
+        for ((x, y), element) in np.ndenumerate(default_map):
+            if element != 0:
+                outputSet.add((x * shrinkFactor), (y * shrinkFactor))
+        return outputSet
 
-                                # x = (math.floor((x_pix - map_origin_x) / map_resolution + 0.5) + map_width / 2);
-                                # y = (math.floor((y_pix - map_origin_y) / map_resolution + 0.5) + map_height / 2);
-
-                outputSet.add(Point(x, y, 0.0))
+        
+#        map_info = occupancy_map.info
+#        map_width = occupancy_map.info.width
+#        map_height = occupancy_map.info.height
+#        map_resolution = occupancy_map.info.resolution  # in m per pixel
+#        map_origin_x = occupancy_map.info.origin.position.x + map_width / 2.0 * map_resolution
+#        map_origin_y = occupancy_map.info.origin.position.y + map_height / 2.0 * map_resolution
+#        outputSet = set()
+#        for (counter, cell_prob) in enumerate(occupancy_map.data):
+#            if cell_prob >= 0 and cell_prob < 0.196:
+#                x_pix = counter % map_width
+#                y_pix = (counter - x_pix) / map_height
+#                x = x_pix * map_info.resolution + map_info.origin.position.x
+#                y = y_pix * (map_info.resolution + 0.004) + map_info.origin.position.y
+#                                 x = (math.floor((x_pix - map_origin_x) / map_resolution + 0.5) + map_width / 2);
+#                                 y = (math.floor((y_pix - map_origin_y) / map_resolution + 0.5) + map_height / 2);
+#                outputSet.add(Point(x, y, 0.0))
 
                 # outputSet = set()
                 # origin = metD.origin.position
@@ -130,14 +148,11 @@ class nav_util(object):
                 #                                 #if (occGrid.data[(y*5 * metD.width) + (x-1)] < self.unoccupiedThreshold) and (occGrid.data[((y+1) * metD.width) + x] < self.unoccupiedThreshold) and (occGrid.data[((y-1) * metD.width) + x] < self.unoccupiedThreshold) and (occGrid.data[(y * metD.width) + (x+1)] < self.unoccupiedThreshold) and (occGrid.data[((y-1) * metD.width) + (x+1)] < self.unoccupiedThreshold) and (occGrid.data[((y+1) * metD.width) + (x-1)] < self.unoccupiedThreshold) and (occGrid.data[((y-1) * metD.width) + (x-1)] < self.unoccupiedThreshold) and (occGrid.data[((y+1) * metD.width) + (x+1)] < self.unoccupiedThreshold):
                 #                                         #The disgusting above statement means that a point is only empty if both it AND the eight   adjacent points are empty.
                 #                                         #Hopefully this will prevent the robot from crashing into things.
-
                 #                                 outputSet.add(((x * metD.resolution * 5 + origin.x), (y * 5 * metD.resolution + origin.y)))
                 #                         except:
                 #                                 dummy = 0
                 # rospy.loginfo(str(outputSet))
-
         #rospy.loginfo(outputSet)
-        return outputSet
 
 
 class SnakeTailController(object):
@@ -196,8 +211,8 @@ class SnakeTailController(object):
         frontier = []
         for newP in newPoints:
             heapq.heappush(frontier, FrontierItem(self.distanceUnit + self.__distance(newP[0], targetPoint), self.distanceUnit, newP[0], newP[0], newP[2]))
-        # Alright, so an entry in the frontier here is of the weird class at the bottom of this file.
-            # print(str(frontier))
+        #Alright, so an entry in the frontier here is of the weird class at the bottom of this file.
+            #print(str(frontier))
         while True:
             currentItem = heapq.heappop(frontier)
             if self.__distance(currentItem.location, targetPoint) == 0:
@@ -210,8 +225,8 @@ class SnakeTailController(object):
                 heapq.heappush(frontier, FrontierItem(self.distanceUnit + self.__distance(newP[0], targetPoint), currentItem.costToReach + self.distanceUnit, newP[0], currentItem.startingMove, newP[2]))
 
     def __roundToNearest(self, unroundedPoint):
-	rospy.loginfo(str(self.mapSet))
-	rospy.loginfo("Hello")
+        rospy.loginfo(str(self.mapSet))
+        rospy.loginfo("Hello")
         if self.__reachable(unroundedPoint):
             return unroundedPoint
         else:
