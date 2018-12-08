@@ -119,6 +119,7 @@ class nav_util(object):
         for ((x, y), element) in np.ndenumerate(default_map):
             if element != 0:
                 outputSet.add((x * shrinkFactor), (y * shrinkFactor))
+                self.tailCont.distanceUnit = occupancy_map.info.resolution * shrink_factor
         return outputSet
 
         
@@ -163,7 +164,7 @@ class SnakeTailController(object):
     # And create a set that only includes the points that actually exist.
     tailLength = 0.0
     currentPoint = Point(0.0, 0.0, 0.0)
-    distanceUnit = 0.05  # Set this to adjust how far a given move will go.
+    distanceUnit = 0.25  # Set this to adjust how far a given move will go.
                          # Bigger distanceUnit = better performance but less precise movement.
                          # If distanceUnit is set too large then it is also possible that the robot will crash into things.
                          # I've provisionally set it to 0.05 because that's the resolution of the maps that we have.
@@ -212,7 +213,6 @@ class SnakeTailController(object):
         for newP in newPoints:
             heapq.heappush(frontier, FrontierItem(self.distanceUnit + self.__distance(newP[0], targetPoint), self.distanceUnit, newP[0], newP[0], newP[2]))
         #Alright, so an entry in the frontier here is of the weird class at the bottom of this file.
-            #print(str(frontier))
         while True:
             currentItem = heapq.heappop(frontier)
             if self.__distance(currentItem.location, targetPoint) == 0:
