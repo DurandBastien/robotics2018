@@ -111,7 +111,9 @@ class nav_util(object):
     def prepareMap(self, occupancy_map): # prepareMap(), AKA the place where code goes to die.
         #Some of the below code shamelessly stolen from Lukas' explore script.
         shrink_factor = 5
+        resolution = occupancy_map.info.resolution
         map_width = occupancy_map.info.width
+        origin = occupancy_map.info.origin.position
         map_height = occupancy_map.info.height
         default_map = numpy.zeros((map_height/shrink_factor, map_width/shrink_factor), dtype = numpy.uint8)
         for i in range(0, len(default_map)):
@@ -127,8 +129,8 @@ class nav_util(object):
         outputSet = set()
         for ((x, y), element) in numpy.ndenumerate(default_map):
             if element != 0:
-                outputSet.add(Point((x * shrink_factor), (y * shrink_factor), 0.0))
-                self.tailCont.distanceUnit = occupancy_map.info.resolution * shrink_factor
+                outputSet.add(Point((x * shrink_factor * resolution + origin.x), (y * shrink_factor * resolution + origin.y), 0.0))
+                self.tailCont.distanceUnit = resolution * shrink_factor
         #rospy.loginfo("Map: " + str(outputSet))
         
         for i in range(len(default_map)):
