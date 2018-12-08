@@ -5,11 +5,13 @@ import rospy
 import actionlib
 
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
-from geometry_msgs.msg import PoseWithCovarianceStamped, Pose, Point
+from geometry_msgs.msg import PoseWithCovarianceStamped, Pose, Point, PoseArray
 from nav_msgs.msg import OccupancyGrid, MapMetaData
+from PIL import Image, ImageDraw
 import math
 import numpy
 import sys
+import heapq
 import copy
 
 
@@ -35,6 +37,7 @@ class nav_util(object):
                 PoseWithCovarianceStamped, self._pose_callback,
                 queue_size=1)
         self.occupancy_map = None
+        self.tail_viz = rospy.Publisher('/tail', PoseArray)
 
                 # try:
                 #         occupancy_map = rospy.wait_for_message("/map", OccupancyGrid, 20)
@@ -51,11 +54,16 @@ class nav_util(object):
         self.estimatedpose = pose
         rospy.loginfo(self.estimatedpose)
         self.tailCont.changePosition(pose.pose.pose.position)
+        self.tailPA = PoseArray()
+        for p in self.tailCont.tail:
+            self.tailPA.poses.append(Pose(p, pose.pose.pose.orientation))
+        self.tailPA.header.frame_id = 'map'
+        self.tail_viz.publish(self.tailPA)
 
 
     def where_am_i(self):
         return self.estimatedpose
-
+	
     def go_to_pose(self, pose):  # This will fail if we haven't ever given the nav_util a pose for the robot to be at.
 
         goal = MoveBaseGoal()
@@ -73,7 +81,8 @@ class nav_util(object):
         rospy.loginfo('targetPoint: ' + str(targetPoint))
         currentTarget = self.tailCont.heapAStar(targetPoint)  #The first line to change if you want to use the alternative (worse) pathfinding algorithm.
         rospy.loginfo('currentTarget: ' + str(currentTarget))
-        while self.tailCont.roundToNearest(targetPoint) != self.tailCont.currentPoint:
+        
+	while self.tailCont.roundToNearest(targetPoint) != self.tailCont.currentPoint:
             goal.target_pose.header.frame_id = 'map'
             goal.target_pose.header.stamp = rospy.Time.now()
             goal.target_pose.pose = Pose(currentTarget,
@@ -110,16 +119,25 @@ class nav_util(object):
                 sum = 0
                 for k in range(i*shrink_factor, i*shrink_factor+shrink_factor):
                     for l in range(j*shrink_factor, j*shrink_factor + shrink_factor):
-                        cell = map_data[k*map_width + l]
+                        cell = occupancy_map.data[k*map_width + l]
                         if cell < 0.196 and cell >= 0:
                             sum = sum + 1
                 if sum == math.pow(shrink_factor,2):
                     default_map[i, j] = 1
         outputSet = set()
-        for ((x, y), element) in np.ndenumerate(default_map):
+        for ((x, y), element) in numpy.ndenumerate(default_map):
             if element != 0:
-                outputSet.add((x * shrinkFactor), (y * shrinkFactor))
+                outputSet.add(Point((x * shrink_factor), (y * shrink_factor), 0.0))
                 self.tailCont.distanceUnit = occupancy_map.info.resolution * shrink_factor
+        #rospy.loginfo("Map: " + str(outputSet))
+        
+        for i in range(len(default_map)):
+            for j in range(len(default_map[0])):
+                if default_map[i, j] == 1:
+                    default_map[i, j] = 100
+
+        img1 = Image.fromarray(default_map.T, 'L')
+        img1.show()
         return outputSet
 
         
@@ -176,12 +194,13 @@ class SnakeTailController(object):
         self.tail = [startingPoint]
 
     def setStartingPoint(self, startingPoint):  # This should ONLY be called if the controller had to be initialised without a position.
+        rospy.loginfo("SSP tail: " ++ str(self.tail))
         if self.currentPoint is None:
             self.currentPoint = startingPoint
             self.tail = [startingPoint]
-
+            
     def dijkstra(self, fakeTargetPoint):
-        targetPoint = self.__roundToNearest(fakeTargetPoint)
+        targetPoint = self.roundToNearest(fakeTargetPoint)
         if self.currentPoint == targetPoint:
             return self.currentPoint
         mapNodes = []
@@ -205,7 +224,7 @@ class SnakeTailController(object):
                                 + self.distanceUnit, bestNode[3]))
 
     def heapAStar(self, fakeTargetPoint):
-        targetPoint = self.__roundToNearest(fakeTargetPoint)
+        targetPoint = self.roundToNearest(fakeTargetPoint)
         if abs(self.currentPoint.x - targetPoint.x) <= self.distanceUnit / 2 and abs(self.currentPoint.y - targetPoint.y) <= self.distanceUnit / 2:
             return self.currentPoint
         newPoints = self.__adjacentPoints(self.currentPoint, self, 1)
@@ -224,9 +243,11 @@ class SnakeTailController(object):
                 temp.changePosition(newP[0])
                 heapq.heappush(frontier, FrontierItem(self.distanceUnit + self.__distance(newP[0], targetPoint), currentItem.costToReach + self.distanceUnit, newP[0], currentItem.startingMove, newP[2]))
 
-    def __roundToNearest(self, unroundedPoint):
-        rospy.loginfo(str(self.mapSet))
-        rospy.loginfo("Hello")
+    def roundToNearest(self, unroundedPoint):
+       # rospy.loginfo(str(self.mapSet))
+       # rospy.loginfo("Hello")
+        if self.mapSet == set():
+            return Point(0.0, 0.0, 0.0)
         if self.__reachable(unroundedPoint):
             return unroundedPoint
         else:
@@ -245,10 +266,10 @@ class SnakeTailController(object):
     def __adjacentPoints(self, p, snakeTail, weight=0):
         returnSet = set()
         pointSet = set()
-        pointSet.add(self.__roundToNearest(Point(p.x + self.distanceUnit, p.y, 0.0)))
-        pointSet.add(self.__roundToNearest(Point(p.x - self.distanceUnit, p.y, 0.0)))
-        pointSet.add(self.__roundToNearest(Point(p.x, p.y + self.distanceUnit, 0.0)))
-        pointSet.add(self.__roundToNearest(Point(p.x, p.y - self.distanceUnit, 0.0)))
+        pointSet.add(self.roundToNearest(Point(p.x + self.distanceUnit, p.y, 0.0)))
+        pointSet.add(self.roundToNearest(Point(p.x - self.distanceUnit, p.y, 0.0)))
+        pointSet.add(self.roundToNearest(Point(p.x, p.y + self.distanceUnit, 0.0)))
+        pointSet.add(self.roundToNearest(Point(p.x, p.y - self.distanceUnit, 0.0)))
         for q in pointSet:
             if self.__reachable(q):
                 tailA = copy.deepcopy(snakeTail)
@@ -268,7 +289,11 @@ class SnakeTailController(object):
                     # It's just: how much longer do we make the tail each time we eat something?
 
     def changePosition(self, newPoint):
-        realnewPoint = self.__roundToNearest(newPoint)
+        if self.currentPoint is None:
+            self.currentPoint = newPoint
+            self.tail = [newPoint]
+            return
+        realnewPoint = self.roundToNearest(newPoint)
         self.tail.reverse()
         self.tail.append(realnewPoint)
         self.tail.reverse()
@@ -305,7 +330,10 @@ class SnakeTailController(object):
         return a < x < b or b < x < a or b == x == a
 
     def isLegalMove(self, tailPoints, target):
+        if self.tail is None:
+            return True
         if len(self.tail) >= 2:
+            for x in range(0, len(self.tail) - 1):
                 cumulativeLength = 0.0
                 if self.__intersect(self.currentPoint, target, self.tail[x], self.tail[x + 1]):
                     return False
@@ -318,6 +346,7 @@ class SnakeTailController(object):
         return True
 
     def __removeRedundantPoints(self, tailPoints, length):  # Remove points that aren't part of the tail any more.
+        rospy.loginfo("tail: " + str(self.tail))
         cumulativeLength = 0.0
         finished = False
         for (index, value) in enumerate(tailPoints):
