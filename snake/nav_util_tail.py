@@ -5,17 +5,19 @@ import rospy
 import actionlib
 
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
-from geometry_msgs.msg import PoseWithCovarianceStamped, Pose, Point
+from geometry_msgs.msg import PoseWithCovarianceStamped, Pose, Point, PoseArray
 from nav_msgs.msg import OccupancyGrid, MapMetaData
+from PIL import Image, ImageDraw
 import math
+import numpy
 import sys
+import heapq
 import copy
 
 
 class nav_util(object):
 
     unoccupiedThreshold = 99  # A ROS Occupancy grid has a "probability of being occupied" for each point.
-
                                  # This is represented as a percentage.
                                  # So 100 is "we know for sure that this point is occupied".
                                  # unoccupiedThreshold is "how low do we need the % to be to consider the point empty for the purpose of pathfinding".
@@ -34,13 +36,12 @@ class nav_util(object):
         self._pose_subscriber = rospy.Subscriber('/amcl_pose',
                 PoseWithCovarianceStamped, self._pose_callback,
                 queue_size=1)
-
         self.occupancy_map = None
+        self.tail_viz = rospy.Publisher('/tail', PoseArray)
 
                 # try:
                 #         occupancy_map = rospy.wait_for_message("/map", OccupancyGrid, 20)
                 #         self.tailCont.update_map(self.prepareMap(occupancy_map))
-
                 # except:
                 #         rospy.logerr("Problem getting a map. Check that you have a map_server running: rosrun map_server map_server <mapname> " )
                 #         sys.exit(1)
@@ -53,11 +54,16 @@ class nav_util(object):
         self.estimatedpose = pose
         rospy.loginfo(self.estimatedpose)
         self.tailCont.changePosition(pose.pose.pose.position)
+        self.tailPA = PoseArray()
+        for p in self.tailCont.tail:
+            self.tailPA.poses.append(Pose(p, pose.pose.pose.orientation))
+        self.tailPA.header.frame_id = 'map'
+        self.tail_viz.publish(self.tailPA)
 
 
     def where_am_i(self):
         return self.estimatedpose
-
+	
     def go_to_pose(self, pose):  # This will fail if we haven't ever given the nav_util a pose for the robot to be at.
 
         goal = MoveBaseGoal()
@@ -75,7 +81,8 @@ class nav_util(object):
         rospy.loginfo('targetPoint: ' + str(targetPoint))
         currentTarget = self.tailCont.heapAStar(targetPoint)  #The first line to change if you want to use the alternative (worse) pathfinding algorithm.
         rospy.loginfo('currentTarget: ' + str(currentTarget))
-        while self.tailCont.roundToNearest(targetPoint) != self.tailCont.currentPoint:
+        
+	while self.tailCont.roundToNearest(targetPoint) != self.tailCont.currentPoint:
             goal.target_pose.header.frame_id = 'map'
             goal.target_pose.header.stamp = rospy.Time.now()
             goal.target_pose.pose = Pose(currentTarget,
@@ -101,25 +108,57 @@ class nav_util(object):
     def get_goalStatus(self):
         return self.move_base_client.get_state()
 
-    def prepareMap(self, occupancy_map):
-        map_info = occupancy_map.info
+    def prepareMap(self, occupancy_map): # prepareMap(), AKA the place where code goes to die.
+        #Some of the below code shamelessly stolen from Lukas' explore script.
+        shrink_factor = 5
+        resolution = occupancy_map.info.resolution
         map_width = occupancy_map.info.width
+        origin = occupancy_map.info.origin.position
         map_height = occupancy_map.info.height
-        map_resolution = occupancy_map.info.resolution  # in m per pixel
-        map_origin_x = occupancy_map.info.origin.position.x + map_width / 2.0 * map_resolution
-        map_origin_y = occupancy_map.info.origin.position.y + map_height / 2.0 * map_resolution
+        default_map = numpy.zeros((map_height/shrink_factor, map_width/shrink_factor), dtype = numpy.uint8)
+        for i in range(0, len(default_map)):
+            for j in range(0, len(default_map[0])):
+                sum = 0
+                for k in range(i*shrink_factor, i*shrink_factor+shrink_factor):
+                    for l in range(j*shrink_factor, j*shrink_factor + shrink_factor):
+                        cell = occupancy_map.data[k*map_width + l]
+                        if cell < 0.196 and cell >= 0:
+                            sum = sum + 1
+                if sum == math.pow(shrink_factor,2):
+                    default_map[i, j] = 1
         outputSet = set()
-        for (counter, cell_prob) in enumerate(occupancy_map.data):
-            if cell_prob >= 0 and cell_prob < 0.196:
-                x_pix = counter % map_width
-                y_pix = (counter - x_pix) / map_height
-                x = x_pix * map_info.resolution + map_info.origin.position.x
-                y = y_pix * (map_info.resolution + 0.004) + map_info.origin.position.y
+        for ((x, y), element) in numpy.ndenumerate(default_map):
+            if element != 0:
+                outputSet.add(Point((x * shrink_factor * resolution + origin.x), (y * shrink_factor * resolution + origin.y), 0.0))
+                self.tailCont.distanceUnit = resolution * shrink_factor
+        #rospy.loginfo("Map: " + str(outputSet))
+        
+        for i in range(len(default_map)):
+            for j in range(len(default_map[0])):
+                if default_map[i, j] == 1:
+                    default_map[i, j] = 100
 
-                                # x = (math.floor((x_pix - map_origin_x) / map_resolution + 0.5) + map_width / 2);
-                                # y = (math.floor((y_pix - map_origin_y) / map_resolution + 0.5) + map_height / 2);
+        img1 = Image.fromarray(default_map.T, 'L')
+        img1.show()
+        return outputSet
 
-                outputSet.add(Point(x, y, 0.0))
+        
+#        map_info = occupancy_map.info
+#        map_width = occupancy_map.info.width
+#        map_height = occupancy_map.info.height
+#        map_resolution = occupancy_map.info.resolution  # in m per pixel
+#        map_origin_x = occupancy_map.info.origin.position.x + map_width / 2.0 * map_resolution
+#        map_origin_y = occupancy_map.info.origin.position.y + map_height / 2.0 * map_resolution
+#        outputSet = set()
+#        for (counter, cell_prob) in enumerate(occupancy_map.data):
+#            if cell_prob >= 0 and cell_prob < 0.196:
+#                x_pix = counter % map_width
+#                y_pix = (counter - x_pix) / map_height
+#                x = x_pix * map_info.resolution + map_info.origin.position.x
+#                y = y_pix * (map_info.resolution + 0.004) + map_info.origin.position.y
+#                                 x = (math.floor((x_pix - map_origin_x) / map_resolution + 0.5) + map_width / 2);
+#                                 y = (math.floor((y_pix - map_origin_y) / map_resolution + 0.5) + map_height / 2);
+#                outputSet.add(Point(x, y, 0.0))
 
                 # outputSet = set()
                 # origin = metD.origin.position
@@ -130,14 +169,11 @@ class nav_util(object):
                 #                                 #if (occGrid.data[(y*5 * metD.width) + (x-1)] < self.unoccupiedThreshold) and (occGrid.data[((y+1) * metD.width) + x] < self.unoccupiedThreshold) and (occGrid.data[((y-1) * metD.width) + x] < self.unoccupiedThreshold) and (occGrid.data[(y * metD.width) + (x+1)] < self.unoccupiedThreshold) and (occGrid.data[((y-1) * metD.width) + (x+1)] < self.unoccupiedThreshold) and (occGrid.data[((y+1) * metD.width) + (x-1)] < self.unoccupiedThreshold) and (occGrid.data[((y-1) * metD.width) + (x-1)] < self.unoccupiedThreshold) and (occGrid.data[((y+1) * metD.width) + (x+1)] < self.unoccupiedThreshold):
                 #                                         #The disgusting above statement means that a point is only empty if both it AND the eight   adjacent points are empty.
                 #                                         #Hopefully this will prevent the robot from crashing into things.
-
                 #                                 outputSet.add(((x * metD.resolution * 5 + origin.x), (y * 5 * metD.resolution + origin.y)))
                 #                         except:
                 #                                 dummy = 0
                 # rospy.loginfo(str(outputSet))
-
         #rospy.loginfo(outputSet)
-        return outputSet
 
 
 class SnakeTailController(object):
@@ -148,7 +184,7 @@ class SnakeTailController(object):
     # And create a set that only includes the points that actually exist.
     tailLength = 0.0
     currentPoint = Point(0.0, 0.0, 0.0)
-    distanceUnit = 0.05  # Set this to adjust how far a given move will go.
+    distanceUnit = 0.25  # Set this to adjust how far a given move will go.
                          # Bigger distanceUnit = better performance but less precise movement.
                          # If distanceUnit is set too large then it is also possible that the robot will crash into things.
                          # I've provisionally set it to 0.05 because that's the resolution of the maps that we have.
@@ -160,12 +196,13 @@ class SnakeTailController(object):
         self.tail = [startingPoint]
 
     def setStartingPoint(self, startingPoint):  # This should ONLY be called if the controller had to be initialised without a position.
+        rospy.loginfo("SSP tail: " ++ str(self.tail))
         if self.currentPoint is None:
             self.currentPoint = startingPoint
             self.tail = [startingPoint]
-
+            
     def dijkstra(self, fakeTargetPoint):
-        targetPoint = self.__roundToNearest(fakeTargetPoint)
+        targetPoint = self.roundToNearest(fakeTargetPoint)
         if self.currentPoint == targetPoint:
             return self.currentPoint
         mapNodes = []
@@ -189,15 +226,14 @@ class SnakeTailController(object):
                                 + self.distanceUnit, bestNode[3]))
 
     def heapAStar(self, fakeTargetPoint):
-        targetPoint = self.__roundToNearest(fakeTargetPoint)
+        targetPoint = self.roundToNearest(fakeTargetPoint)
         if abs(self.currentPoint.x - targetPoint.x) <= self.distanceUnit / 2 and abs(self.currentPoint.y - targetPoint.y) <= self.distanceUnit / 2:
             return self.currentPoint
         newPoints = self.__adjacentPoints(self.currentPoint, self, 1)
         frontier = []
         for newP in newPoints:
             heapq.heappush(frontier, FrontierItem(self.distanceUnit + self.__distance(newP[0], targetPoint), self.distanceUnit, newP[0], newP[0], newP[2]))
-        # Alright, so an entry in the frontier here is of the weird class at the bottom of this file.
-            # print(str(frontier))
+        #Alright, so an entry in the frontier here is of the weird class at the bottom of this file.
         while True:
             currentItem = heapq.heappop(frontier)
             if self.__distance(currentItem.location, targetPoint) == 0:
@@ -209,9 +245,11 @@ class SnakeTailController(object):
                 temp.changePosition(newP[0])
                 heapq.heappush(frontier, FrontierItem(self.distanceUnit + self.__distance(newP[0], targetPoint), currentItem.costToReach + self.distanceUnit, newP[0], currentItem.startingMove, newP[2]))
 
-    def __roundToNearest(self, unroundedPoint):
-	rospy.loginfo(str(self.mapSet))
-	rospy.loginfo("Hello")
+    def roundToNearest(self, unroundedPoint):
+       # rospy.loginfo(str(self.mapSet))
+       # rospy.loginfo("Hello")
+        if self.mapSet == set():
+            return Point(0.0, 0.0, 0.0)
         if self.__reachable(unroundedPoint):
             return unroundedPoint
         else:
@@ -230,10 +268,10 @@ class SnakeTailController(object):
     def __adjacentPoints(self, p, snakeTail, weight=0):
         returnSet = set()
         pointSet = set()
-        pointSet.add(self.__roundToNearest(Point(p.x + self.distanceUnit, p.y, 0.0)))
-        pointSet.add(self.__roundToNearest(Point(p.x - self.distanceUnit, p.y, 0.0)))
-        pointSet.add(self.__roundToNearest(Point(p.x, p.y + self.distanceUnit, 0.0)))
-        pointSet.add(self.__roundToNearest(Point(p.x, p.y - self.distanceUnit, 0.0)))
+        pointSet.add(self.roundToNearest(Point(p.x + self.distanceUnit, p.y, 0.0)))
+        pointSet.add(self.roundToNearest(Point(p.x - self.distanceUnit, p.y, 0.0)))
+        pointSet.add(self.roundToNearest(Point(p.x, p.y + self.distanceUnit, 0.0)))
+        pointSet.add(self.roundToNearest(Point(p.x, p.y - self.distanceUnit, 0.0)))
         for q in pointSet:
             if self.__reachable(q):
                 tailA = copy.deepcopy(snakeTail)
@@ -253,7 +291,11 @@ class SnakeTailController(object):
                     # It's just: how much longer do we make the tail each time we eat something?
 
     def changePosition(self, newPoint):
-        realnewPoint = self.__roundToNearest(newPoint)
+        if self.currentPoint is None:
+            self.currentPoint = newPoint
+            self.tail = [newPoint]
+            return
+        realnewPoint = self.roundToNearest(newPoint)
         self.tail.reverse()
         self.tail.append(realnewPoint)
         self.tail.reverse()
@@ -290,7 +332,10 @@ class SnakeTailController(object):
         return a < x < b or b < x < a or b == x == a
 
     def isLegalMove(self, tailPoints, target):
+        if self.tail is None:
+            return True
         if len(self.tail) >= 2:
+            for x in range(0, len(self.tail) - 1):
                 cumulativeLength = 0.0
                 if self.__intersect(self.currentPoint, target, self.tail[x], self.tail[x + 1]):
                     return False
@@ -303,6 +348,7 @@ class SnakeTailController(object):
         return True
 
     def __removeRedundantPoints(self, tailPoints, length):  # Remove points that aren't part of the tail any more.
+        rospy.loginfo("tail: " + str(self.tail))
         cumulativeLength = 0.0
         finished = False
         for (index, value) in enumerate(tailPoints):
