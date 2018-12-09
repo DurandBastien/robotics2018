@@ -18,6 +18,7 @@ class controller(object):
         self.or_topic_name = "or"
         self.speech_topic_name = "voice_commands"
         self.nav_topic_name = 'navigation_commands'
+        self.collection_topic_name = 'box_collection'
         self.obstacle_topic_name = "boxe"
         self.nav_needs_updating = False
         self.target_pose = None
@@ -28,6 +29,7 @@ class controller(object):
                                                      self._map_callback,
                                                      queue_size=1)
         self.navigation_publisher = rospy.Publisher(self.nav_topic_name, PoseWithCovarianceStamped, queue_size = 1)
+        self.collection_publisher = rospy.Publisher(self.collection_topic_name, String, queue_size = 1)
         self._speech_subscriber = rospy.Subscriber(self.speech_topic_name, String,
                                                   self._speech_callback,
                                                   queue_size=1)
@@ -69,6 +71,7 @@ class controller(object):
                 self.nav.cancel_goal()
                 self.object_list[self.current_target["name"]]["collected"] = True
                 rospy.loginfo("COLLECTED")
+                self.collection_publisher.publish("Yay")
                 pose_for_obstacle_topic = PoseStamped()
                 pose_for_obstacle_topic.header.frame_id = "stop"
                 self._obstacle_topic_publisher.publish(pose_for_obstacle_topic)

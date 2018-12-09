@@ -19,6 +19,7 @@ import time
 class nav_util(object):
 
     controlTopicName = 'navigation_commands'
+    collectionTopicName = 'box_collection'
     unoccupiedThreshold = 99     # A ROS Occupancy grid has a "probability of being occupied" for each point.
                                  # This is represented as a percentage.
                                  # So 100 is "we know for sure that this point is occupied".
@@ -27,11 +28,11 @@ class nav_util(object):
 
     def __init__(self):
         self.subscriber = rospy.Subscriber(self.controlTopicName, PoseWithCovariancesStamped, self.callback)
+        self.collectionSubscriber= rospy.Subscriber(self.collectionTopicName, String, self.collectionCallback)
         self.needsUpdate = False
         self.estimatedpose = PoseWithCovarianceStamped()
         self.goalIsCancelled = False
-        self.move_base_client = actionlib.SimpleActionClient('move_base'
-                , MoveBaseAction)
+        self.move_base_client = actionlib.SimpleActionClient('move_base', MoveBaseAction)
         rospy.loginfo('nav_util waiting for action server')
         self.move_base_client.wait_for_server()
         rospy.loginfo('server found')
@@ -53,6 +54,9 @@ class nav_util(object):
     def callback(self, pose):
         self.targetPose = pose
         self.needsUpdate = True
+
+    def collectionCallback(self, msg):
+        self.tailCont.increaseTailLength
 
     def init_map(self, map_):
         self.occupancy_map = map_
