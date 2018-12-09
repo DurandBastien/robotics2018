@@ -8,22 +8,26 @@ from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from geometry_msgs.msg import PoseWithCovarianceStamped, Pose, Point, PoseArray
 from nav_msgs.msg import OccupancyGrid, MapMetaData
 from PIL import Image, ImageDraw
+import rospy
 import math
 import numpy
 import sys
 import heapq
 import copy
-
+import time
 
 class nav_util(object):
 
-    unoccupiedThreshold = 99  # A ROS Occupancy grid has a "probability of being occupied" for each point.
+    controlTopicName = 'navigation_commands'
+    unoccupiedThreshold = 99     # A ROS Occupancy grid has a "probability of being occupied" for each point.
                                  # This is represented as a percentage.
                                  # So 100 is "we know for sure that this point is occupied".
                                  # unoccupiedThreshold is "how low do we need the % to be to consider the point empty for the purpose of pathfinding".
                                  # So 20 means that if a point has a 79% chance of being empty, we consider it full; if it has a 81% chance of being empty, we consider it empty.
 
     def __init__(self):
+        self.subscriber = rospy.Subscriber(self.controlTopicName, PoseWithCovariancesStamped, self.callback)
+        self.needsUpdate = False
         self.estimatedpose = PoseWithCovarianceStamped()
         self.goalIsCancelled = False
         self.move_base_client = actionlib.SimpleActionClient('move_base'
@@ -46,6 +50,10 @@ class nav_util(object):
                 #         rospy.logerr("Problem getting a map. Check that you have a map_server running: rosrun map_server map_server <mapname> " )
                 #         sys.exit(1)
 
+    def callback(self, pose):
+        self.targetPose = pose
+        self.needsUpdate = True
+
     def init_map(self, map_):
         self.occupancy_map = map_
         self.tailCont.updateMap(self.prepareMap(self.occupancy_map))
@@ -60,29 +68,31 @@ class nav_util(object):
         self.tailPA.header.frame_id = 'map'
         self.tail_viz.publish(self.tailPA)
 
-
     def where_am_i(self):
         return self.estimatedpose
+
+    def loop(self):
+        if(self.needsUpdate):
+            self.go_to_pose(self.targetPose)
+        else:
+            time.sleep(0.1)
+            self.loop()
 	
     def go_to_pose(self, pose):  # This will fail if we haven't ever given the nav_util a pose for the robot to be at.
-
+        self.needsUpdate = False
         goal = MoveBaseGoal()
-
                 # goal.target_pose.header.frame_id = 'map'
                 # goal.target_pose.header.stamp = rospy.Time.now()
                 # goal.target_pose.pose = pose.pose.pose
                 # self.move_base_client.send_goal(goal)
-
                 # res = self.move_base_client.wait_for_result()
                 # rospy.loginfo("result recieved")
                 # rospy.loginfo(res)
-
         targetPoint = pose.pose.pose.position
         rospy.loginfo('targetPoint: ' + str(targetPoint))
         currentTarget = self.tailCont.heapAStar(targetPoint)  #The first line to change if you want to use the alternative (worse) pathfinding algorithm.
         rospy.loginfo('currentTarget: ' + str(currentTarget))
-        
-	while self.tailCont.roundToNearest(targetPoint) != self.tailCont.currentPoint:
+	while self.tailCont.roundToNearest(targetPoint) != self.tailCont.roundToNearest(self.tailCont.currentPoint):
             goal.target_pose.header.frame_id = 'map'
             goal.target_pose.header.stamp = rospy.Time.now()
             goal.target_pose.pose = Pose(currentTarget,
@@ -99,7 +109,9 @@ class nav_util(object):
             rospy.loginfo('currentTarget: ' + str(currentTarget))
             if self.goalIsCancelled:
                 self.goalIsCancelled = False
+                self.loop()
                 return 1
+        self.loop()
 
     def cancel_goal(self):
         self.move_base_client.cancel_goal()
@@ -132,12 +144,10 @@ class nav_util(object):
                 outputSet.add(Point((x * shrink_factor * resolution + origin.x), (y * shrink_factor * resolution + origin.y), 0.0))
                 self.tailCont.distanceUnit = resolution * shrink_factor
         #rospy.loginfo("Map: " + str(outputSet))
-        
         for i in range(len(default_map)):
             for j in range(len(default_map[0])):
                 if default_map[i, j] == 1:
                     default_map[i, j] = 100
-
         img1 = Image.fromarray(default_map.T, 'L')
         img1.show()
         return outputSet
@@ -183,12 +193,12 @@ class SnakeTailController(object):
     # We'll need some way to convert the map to a grid of points.
     # And create a set that only includes the points that actually exist.
     tailLength = 0.0
+    tail = []
     currentPoint = Point(0.0, 0.0, 0.0)
     distanceUnit = 0.25  # Set this to adjust how far a given move will go.
                          # Bigger distanceUnit = better performance but less precise movement.
                          # If distanceUnit is set too large then it is also possible that the robot will crash into things.
                          # I've provisionally set it to 0.05 because that's the resolution of the maps that we have.
-    tail = []
 
     def __init__(self, startingPoint=None):
         self.currentPoint = startingPoint
@@ -285,10 +295,10 @@ class SnakeTailController(object):
         return point in self.mapSet
 
     def tailUnitLength(self):  # Declaring this as a function because for some reason python doesn't actually have constants lol.
-        return 0.15  # Edit this number to chage how fast the tail grows.
-                    # This number doesn't in principle have anything to do with distanceUnit.
-                    # It almost certainly should be a mutiple of distanceUnit tho.
-                    # It's just: how much longer do we make the tail each time we eat something?
+        return 0.25      # Edit this number to chage how fast the tail grows.
+                         # This number doesn't in principle have anything to do with distanceUnit.
+                         # It almost certainly should be a mutiple of distanceUnit tho.
+                         # It's just: how much longer do we make the tail each time we eat something?
 
     def changePosition(self, newPoint):
         if self.currentPoint is None:
@@ -381,3 +391,33 @@ class FrontierItem(object):  # Need to define this rather trivial data container
 
     def __lt__(self, other):  # This two-line method is why I have to define this whole stupid class.
         return self.costPlusDistance < other.costPlusDistance
+
+
+
+
+
+if __name__ = '__main__':
+    try:
+        rospy.init_node("nav_util")
+        navUtil = nav_util()
+        navUtil.loop()
+    except rospy.ROSInterruptException:
+        pass
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

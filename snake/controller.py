@@ -4,6 +4,7 @@ import rospy
 import actionlib
 import nav_util
 import math
+import time
 import explore
 
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
@@ -16,44 +17,45 @@ class controller(object):
         self.exploring_topic_name = "exploring"
         self.or_topic_name = "or"
         self.speech_topic_name = "voice_commands"
+        self.nav_topic_name = 'navigation_commands'
         self.obstacle_topic_name = "boxe"
-
+        self.nav_needs_updating = False
+        self.target_pose = None
         self._or_subscriber = rospy.Subscriber(self.or_topic_name, PoseStamped,
                                                   self._or_callback,
                                                   queue_size=1)
-
         self.or_to_map_subscriber = rospy.Subscriber("/or_map", PoseStamped,
                                                      self._map_callback,
                                                      queue_size=1)
-
+        self.navigation_publisher = rospy.Publisher(self.nav_topic_name, PoseWithCovarianceStamped, queue_size = 1)
         self._speech_subscriber = rospy.Subscriber(self.speech_topic_name, String,
                                                   self._speech_callback,
                                                   queue_size=1)
-
         self._exploring_publisher = rospy.Publisher(self.exploring_topic_name,
                                                     String, queue_size = 1)
-
         self._exploring_subscriber = rospy.Subscriber("where_to_go", PoseWithCovarianceStamped, self._exploring_callback, queue_size = 1)
-
+        
         self._obstacle_topic_publisher = rospy.Publisher(self.obstacle_topic_name,
                                                     PoseStamped, queue_size = 1)
-
-        
         #"apple": {"pose": None, "collected": False}}
         self.object_list = {"mouse": {"pose": None, "collected": False}, "apple": {"pose": None, "collected": False}}
         #"apple" : {"pose": None, "collected": False}}
         self.map_list = {"mouse": {"pose": None}} 
         self.priority_list = ["mouse", "apple"]
         self.current_target = {"name": self.priority_list[0]}
-
         self.nav = nav_util.nav_util()
         self.distance_threshold = 0.35
 
+    def repeat_this(self):
+        if self.nav_needs_updating:
+            self.navigation_publisher.publish(self.target_pose)
+            self.nav_needs_updating = False
+        else:
+            time.sleep(0.1)
 
-        
     def _exploring_callback(self, Pose):
-        self.nav.go_to_pose(Pose)
-        
+        self.target_pose = Pose
+        self.nav_needs_updating = True
         
     def _or_callback(self, pose):
         rospy.loginfo("in callback")
@@ -118,10 +120,12 @@ class controller(object):
         rospy.loginfo(self.priority_list)
         rospy.loginfo(self.current_target)
 
-
 if __name__ == '__main__':
     # --- Main Program  ---
-    rospy.init_node("controller")
-    controller = controller()
-    rospy.spin()
-
+    try:
+        rospy.init_node("controller")
+        controller = controller()
+        while True:
+            controller.repeat_this()
+    except rospy.ROSInterruptException:
+        pass
