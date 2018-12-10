@@ -13,6 +13,9 @@ from nav_msgs.msg import Odometry
 from std_msgs.msg import String
 
 class controller(object):
+    caresAboutOR = True      # If this is False, then nobody cares about the OR.
+                             # The tail length will simply increase every tailExtensionTime seconds.
+                             # tailExtensionTime is defined in the timer script
     def __init__(self):
         self.exploring_topic_name = "exploring"
         self.or_topic_name = "or"
@@ -22,12 +25,11 @@ class controller(object):
         self.obstacle_topic_name = "boxe"
         self.nav_needs_updating = False
         self.target_pose = None
-        self._or_subscriber = rospy.Subscriber(self.or_topic_name, PoseStamped,
-                                                  self._or_callback,
-                                                  queue_size=1)
-        self.or_to_map_subscriber = rospy.Subscriber("/or_map", PoseStamped,
-                                                     self._map_callback,
-                                                     queue_size=1)
+        if self.caresAboutOR:
+            self._or_subscriber = rospy.Subscriber(self.or_topic_name, PoseStamped, self._or_callback, queue_size=1)
+            self.or_to_map_subscriber = rospy.Subscriber("/or_map", PoseStamped, self._map_callback, queue_size=1)
+        else:
+            self.time_subscriber = rospy.Subscriber("time", String, self.time_callback, queue_size=1)
         self.navigation_publisher = rospy.Publisher(self.nav_topic_name, PoseWithCovarianceStamped, queue_size = 1)
         self.collection_publisher = rospy.Publisher(self.collection_topic_name, String, queue_size = 1)
         self._speech_subscriber = rospy.Subscriber(self.speech_topic_name, String,
@@ -54,6 +56,9 @@ class controller(object):
             self.nav_needs_updating = False
         else:
             time.sleep(0.1)
+
+    def time_callback(self, whoCares):
+        self.collection_publisher.publish("Yay")
 
     def _exploring_callback(self, Pose):
         self.target_pose = Pose
