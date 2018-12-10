@@ -27,7 +27,7 @@ class nav_util(object):
                                  # So 20 means that if a point has a 79% chance of being empty, we consider it full; if it has a 81% chance of being empty, we consider it empty.
 
     def __init__(self):
-        self.subscriber = rospy.Subscriber(self.controlTopicName, PoseWithCovariancesStamped, self.callback)
+        self.subscriber = rospy.Subscriber(self.controlTopicName, PoseWithCovarianceStamped, self.callback)
         self.collectionSubscriber= rospy.Subscriber(self.collectionTopicName, String, self.collectionCallback)
         self.needsUpdate = False
         self.estimatedpose = PoseWithCovarianceStamped()
@@ -41,13 +41,13 @@ class nav_util(object):
         self._pose_subscriber = rospy.Subscriber('/amcl_pose', PoseWithCovarianceStamped, self._pose_callback, queue_size=1)
         self.occupancy_map = None
         self.tail_viz = rospy.Publisher('/tail', PoseArray)
-
-                # try:
-                #         occupancy_map = rospy.wait_for_message("/map", OccupancyGrid, 20)
-                #         self.tailCont.update_map(self.prepareMap(occupancy_map))
-                # except:
-                #         rospy.logerr("Problem getting a map. Check that you have a map_server running: rosrun map_server map_server <mapname> " )
-                #         sys.exit(1)
+        try:
+            occ_map = rospy.wait_for_message("/map", OccupancyGrid, 20)
+        except:
+            rospy.logerr("Problem getting a map. Check that you have a map_server running: rosrun map_server map_server <mapname> " )
+            sys.exit(1)
+        rospy.loginfo("Map received. %d X %d, %f px/m." % (occ_map.info.width, occ_map.info.height, occ_map.info.resolution))
+        self.tailCont.updateMap(self.prepareMap(occ_map))
 
     def callback(self, pose):
         self.targetPose = pose
@@ -399,7 +399,7 @@ class FrontierItem(object):  # Need to define this rather trivial data container
 
 
 
-if __name__ = '__main__':
+if __name__ == '__main__':
     try:
         rospy.init_node("nav_util")
         navUtil = nav_util()
