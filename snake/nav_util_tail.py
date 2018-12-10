@@ -38,9 +38,7 @@ class nav_util(object):
         rospy.loginfo('server found')
         self.tailCont = SnakeTailController()
         rospy.loginfo('nav_util waiting for a map...')
-        self._pose_subscriber = rospy.Subscriber('/amcl_pose',
-                PoseWithCovarianceStamped, self._pose_callback,
-                queue_size=1)
+        self._pose_subscriber = rospy.Subscriber('/amcl_pose', PoseWithCovarianceStamped, self._pose_callback, queue_size=1)
         self.occupancy_map = None
         self.tail_viz = rospy.Publisher('/tail', PoseArray)
 
@@ -76,11 +74,11 @@ class nav_util(object):
         return self.estimatedpose
 
     def loop(self):
-        if(self.needsUpdate):
-            self.go_to_pose(self.targetPose)
-        else:
-            time.sleep(0.1)
-            self.loop()
+        while True:
+            if(self.needsUpdate):
+                self.go_to_pose(self.targetPose)
+            else:
+                time.sleep(0.1)
 	
     def go_to_pose(self, pose):  # This will fail if we haven't ever given the nav_util a pose for the robot to be at.
         self.needsUpdate = False
@@ -115,7 +113,6 @@ class nav_util(object):
                 self.goalIsCancelled = False
                 self.loop()
                 return 1
-        self.loop()
 
     def cancel_goal(self):
         self.move_base_client.cancel_goal()
@@ -284,17 +281,13 @@ class SnakeTailController(object):
         pointSet = set()
         nearest = self.roundToNearest(p)
         pointA = self.roundToNearest(Point(p.x + self.distanceUnit, p.y, 0.0))
-        if self.__reachable(pointA):
-            pointSet.add(pointA)
+        pointSet.add(pointA)
         pointA = self.roundToNearest(Point(p.x - self.distanceUnit, p.y, 0.0))
-        if self.__reachable(pointB):
-            pointSet.add(pointB)
+        pointSet.add(pointA)
         pointA = self.roundToNearest(Point(p.x, p.y + self.distanceUnit, 0.0))
-        if self.__reachable(pointC):
-            pointSet.add(pointC)
+        pointSet.add(pointA)
         pointA = self.roundToNearest(Point(p.x, p.y - self.distanceUnit, 0.0))
-        if self.__reachable(pointD):
-            pointSet.add(pointD)
+        pointSet.add(pointA)
         for q in pointSet:
             tempTail = copy.deepcopy(snakeTail)
             if tempTail.isLegalMove(tempTail.tail, q):
