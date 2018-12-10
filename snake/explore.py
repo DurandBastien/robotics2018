@@ -5,6 +5,7 @@ from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, PoseArray,
 from tf.transformations import quaternion_from_euler
 
 from nav_msgs.msg import OccupancyGrid, Odometry
+from map_msgs.msg import OccupancyGridUpdate
 from std_msgs.msg import String
 import sys
 from copy import deepcopy
@@ -31,6 +32,10 @@ Possible improvements
 - Remove rows and columns that only have out of bound values, remember to take into account the removed rows when calculating robot position in the array map
 """
 
+
+OBSTACLE = 0
+FREE = 1 #/unexplored
+EXPLORED = 2
 
 class Display():
     def __init__(self):
@@ -62,7 +67,7 @@ class Display():
         img1 = Image.fromarray(map1.T, 'L')
         img1.show()
         
-    def display_1d(self, map1, height, width):
+    def display_1d(self, map1, height, width, point):
 	rospy.loginfo("height: {}, width: {}".format(height, width))
 	temp_map = np.zeros((height, width), dtype = np.uint8)
 	for i in range(height):
@@ -71,12 +76,32 @@ class Display():
                 if cell == 0:
                     #not explored
                     temp_map[i][j] = 100
+        rospy.loginfo("Point is none: {}".format(point is None))
+        if point is not None:
+            temp_map[point[1]][point[0]] = 240
+            #ImageDraw.Draw(img1).ellipse([(point[1]-10, point[0]-10), (point[1]+10, point[0]+10)],fill=200, outline=200)
 	img1 = Image.fromarray(temp_map.T, 'L')
         img1.show()
 
+    def how_much_explored(self, base_map, explored_map):
+        no_of_available_cells = 0
+        no_of_explored = 0
+        for i in range(len(base_map)):
+            for j in range(len(base_map[0])):
+                if base_map[i][j] == FREE:
+                    no_of_available_cells = no_of_available_cells + 1
+                    if explored_map[i][j] == EXPLORED:
+                        no_of_explored = no_of_explored + 1                        
+        return no_of_explored/(no_of_available_cells*1.0)
+
 class Explore():
     def __init__(self, shrink_factor):
+        self.current_goal = None
+        self.global_costmap_update = None
+        self.global_costmap_update_width = None
+        self.global_costmap_update_height = None        
         self.shrink_factor = shrink_factor
+        self.range_of_vision = 0.6        
         self.current_odometry = None
         self.map_set = False
         self.msg = ""
@@ -99,7 +124,7 @@ class Explore():
         self.local_costmap_width = None
         self.local_costmap_height = None
         self.local_costmap_setup = False
-        self.range_of_vision = 0.5
+        self.global_costmap = None        
         rospy.loginfo("Waiting for a map...")
         try:
             occ_map = rospy.wait_for_message("/map", OccupancyGrid, 20)
@@ -113,6 +138,8 @@ class Explore():
         self.map_height = occ_map.info.height
         self.map_resolution = occ_map.info.resolution
         self.map_data = occ_map.data
+        self.map_real_origin_x = occ_map.info.origin.position.x
+        self.map_real_origin_y = occ_map.info.origin.position.y
         self.map_origin_x = ( occ_map.info.origin.position.x +
                          (self.map_width / 2.0) * self.map_resolution*self.shrink_factor )
         self.map_origin_y = ( occ_map.info.origin.position.y +
@@ -122,17 +149,41 @@ class Explore():
         self._exploring_sub = rospy.Subscriber("/exploring", String, self._exploring_callback, queue_size=1)
         self._pose_subscriber = rospy.Subscriber("/amcl_pose", PoseWithCovarianceStamped, self._pose_callback, queue_size=1)
         self._local_costmap_subscriber = rospy.Subscriber("/move_base/local_costmap/costmap", OccupancyGrid, self._local_costmap_callback, queue_size=1)
-        self.goal_publisher = rospy.Publisher("/where_to_go", PoseWithCovarianceStamped, queue_size=1)
+        self._local_costmap_update_subscriber = rospy.Subscriber("/move_base/local_costmap/costmap_updates", OccupancyGridUpdate, self._local_costmap_update_callback, queue_size=1)
+        self._global_costmap_subscriber = rospy.Subscriber("/move_base/global_costmap/costmap", OccupancyGrid, self._global_costmap_callback , queue_size=1)
+        self._global_costmap_update_subscriber = rospy.Subscriber("/move_base/global_costmap/costmap_updates", OccupancyGridUpdate, self._global_costmap_update_callback , queue_size=1) 
+        self.goal_publisher = rospy.Publisher("/where_to_go", PoseWithCovarianceStamped ,queue_size=1)
+        self.test_pose_publisher = rospy.Publisher("/test_pose", PoseWithCovarianceStamped ,queue_size=1)
 
     def _local_costmap_callback(self, costmap):
-        rospy.loginfo("local_costmap_callback")
         self.local_costmap = costmap.data
-        self.local_costmap_origin = costmap.info.origin
+        self.local_costmap_origin_position = self.translate_coord(costmap.info.origin.position.x, costmap.info.origin.position.y)
         self.local_costmap_width = costmap.info.width
         self.local_costmap_height = costmap.info.height
-        self.local_costmap_resolution = costmap.info.resolution
         self.local_costmap_setup = True
 
+    def _local_costmap_update_callback(self, costmap):
+        rospy.loginfo("local_costmap_update_callback")
+        self.local_costmap = costmap.data
+        #rospy.loginfo("lcmu, x, y: {}".format((costmap.x, costmap.y)))
+        #rospy.loginfo("Lcmu, height, width: {}".format((costmap.height, costmap.width)))
+
+    def _global_costmap_callback(self, costmap):
+        self.global_costmap= list(costmap.data)
+
+    def _global_costmap_update_callback(self, costmap):
+        self.global_costmap_update = costmap.data
+        self.global_costmap_update_height = costmap.height
+        self.global_costmap_update_width = costmap.width
+
+        for i in range(len(costmap.data)):
+            y = i/costmap.width + costmap.y
+            x= i%costmap.width + costmap.x
+            #print("type of gcm: {}, type of gcmu: {}".format(len(self.global_costmap), len(costmap.data)))
+            self.global_costmap[y*self.map_width + x] = costmap.data[i]        
+        #rospy.loginfo("gcmu, x, y: {}".format((costmap.x, costmap.y)))
+        #rospy.loginfo("gcmu, height, width: {}".format((costmap.height, costmap.width)))
+    
     def _exploring_callback(self, msg):
         self.msg = msg.data
 
@@ -145,22 +196,17 @@ class Explore():
         if self.map_set and self.current_odometry is not None and self.msg == "explore":
             copy_odo = deepcopy(self.current_odometry)
             goal_pose = self.calc_next_goal(copy_odo.pose.pose)
+            self.current_goal = (goal_pose[0]*3, goal_pose[1]*3)
+            rospy.loginfo("current_goal: {}".format(self.current_goal))
             rospy.loginfo("current_array_pose: {}, goal_array_pose: {}".format(self.translate_coord(copy_odo.pose.pose.position.x, copy_odo.pose.pose.position.y), goal_pose))
             goal_pose = self.translate_coord_back(goal_pose[0], goal_pose[1])
-            rospy.loginfo("current_real_pose: {}, goal_real_pose: {}".format((copy_odo.pose.pose.position.x, copy_odo.pose.pose.position.y), goal_pose))
+            rospy.loginfo("current_real_pose: {}, goal_real_pose: {}".format((round(copy_odo.pose.pose.position.x, 3), round(copy_odo.pose.pose.position.y, 3)), (round(goal_pose[0], 3), round(goal_pose[1], 3))))
             new_odo = copy_odo
             new_odo.pose.pose.position.x = goal_pose[0]
-            new_odo.pose.pose.position.y = goal_pose[1]
+            new_odo.pose.pose.position.y = goal_pose[1]            
             self.goal_publisher.publish(new_odo)
-        rospy.sleep(2)
+        rospy.sleep(3)
         
-    def set_robot_location(self, p):
-        """
-        Args:
-            p (Pose): position and oreintation of the robot
-        """
-        self.pose = p
-
     def restart_exploration(self):
         self.exploration_map = self.default_map
         self.img = Image.fromarray(self.exploration_map.T, 'L')
@@ -201,7 +247,7 @@ class Explore():
         
     def inflate_obstacles(self):
         temp_img = Image.fromarray(self.default_map.T, 'L')
-        dis= 4.5
+        dis = 4
         for i in range(len(self.default_map)):
             for j in range(len(self.default_map[0])):
                 if self.default_map[i][j] == 0:
@@ -214,7 +260,7 @@ class Explore():
         # does not use  the scan_data
         # assume that camera is not abstructed
         # can be improved by taking the scan_data
-        angle_of_vision = math.pi/2
+        angle_of_vision = (math.pi*3)/5
         robot_orientation = self.getHeading(pose.orientation)
         robot_position = pose.position
 
@@ -280,7 +326,7 @@ class Explore():
             j = x_start
             while j < x_end:
                 if j < self.map_width/self.shrink_factor and self.exploration_map[i][j] == 1:
-                    if (inside_the_wall or self.is_reachable(x, y, j, i)) and self.far_enough(x, y, j, i) and not self.blocked_in_local_costmap(j, i):
+                    if (inside_the_wall or self.is_reachable(x, y, j, i)) and self.far_enough(x, y, j, i) and not self.blocked_in_local_costmap(j, i) and not self.blocked_in_global_costmap(j,i):
                         return (j, i)
                     else:
                         self.exploration_map[i][j] = 0
@@ -289,7 +335,7 @@ class Explore():
             j = x_start
             while i < y_end:
                 if i < self.map_height/self.shrink_factor and self.exploration_map[i][j] == 1:
-                    if (inside_the_wall or self.is_reachable(x, y, j, i)) and self.far_enough(x, y, j, i) and not self.blocked_in_local_costmap(j, i):
+                    if (inside_the_wall or self.is_reachable(x, y, j, i)) and self.far_enough(x, y, j, i) and not self.blocked_in_local_costmap(j, i) and not self.blocked_in_global_costmap(j,i):
                         return (j, i)
                     else:
                         self.exploration_map[i][j] = 0
@@ -298,7 +344,7 @@ class Explore():
             j = x_end
             while j > x_start:
                 if j >= 0 and self.exploration_map[i][j] == 1:
-                    if (inside_the_wall or self.is_reachable(x, y, j, i)) and self.far_enough(x, y, j, i) and not self.blocked_in_local_costmap(j, i):
+                    if (inside_the_wall or self.is_reachable(x, y, j, i)) and self.far_enough(x, y, j, i) and not self.blocked_in_local_costmap(j, i) and not self.blocked_in_global_costmap(j,i):
                         return (j, i)
                     else:
                         self.exploration_map[i][j] = 0
@@ -307,7 +353,7 @@ class Explore():
             j = x_end
             while i > y_start:
                 if i >= 0 and self.exploration_map[i][j] == 1:
-                    if (inside_the_wall or self.is_reachable(x, y, j, i)) and self.far_enough(x, y, j, i) and not self.blocked_in_local_costmap(j, i):
+                    if (inside_the_wall or self.is_reachable(x, y, j, i)) and self.far_enough(x, y, j, i) and not self.blocked_in_local_costmap(j, i) and not self.blocked_in_global_costmap(j,i):
                         return (j, i)
                     else:
                         self.exploration_map[i][j] = 0
@@ -376,23 +422,56 @@ class Explore():
                 point = path[0]
                 #ang = 
         return (point[0], point[1], ang)
-    
+
     def far_enough(self, x, y, x2, y2):
         r_dis = math.sqrt(math.pow((x2 - x)*self.map_resolution*self.shrink_factor, 2) + math.pow((y2 - y)*self.map_resolution*self.shrink_factor, 2))
         return r_dis >= 0.5
-    
+
     def blocked_in_local_costmap(self, x, y):
+        rospy.loginfo("local costmap initiated: {}".format(self.local_costmap is not None))
         if not self.local_costmap_setup:
             return False
-        local_x = x - self.local_costmap_origin.position.x
-        local_y = y - self.local_costmap_origin.position.y
-        if local_x >= 0 and local_x < self.local_costmap_width/self.shrink_factor and local_y >= 0 and local_y < self.local_costmap_height/self.shrink_factor:
-            if self.local_costmap_data[local_y*self.local_costmap_width/self.shrink_factor + local_x] == 0:
+        rospy.loginfo("costmap, origin: {}, height/width: {}".format((self.local_costmap_origin_position[0], self.local_costmap_origin_position[1]), (self.local_costmap_height, self.local_costmap_width)))        
+        local_x = (x - self.local_costmap_origin_position[0])*self.shrink_factor
+        local_y = (y - self.local_costmap_origin_position[1])*self.shrink_factor
+        rospy.loginfo("costmap, x: {}, y: {}".format(local_x, local_y, ))
+        if local_x >= 0 and local_x < self.local_costmap_width and local_y >= 0 and local_y < self.local_costmap_height:
+            if self.local_costmap[local_y*self.local_costmap_width + local_x] == 0:
                 return False
             else:
                 return True
         else:
             return False
+        
+    def blocked_in_global_costmap(self, x, y):
+        rospy.loginfo("global costmap initiated: {}".format(self.global_costmap is not None))
+        if self.global_costmap == None:
+            return False
+        
+        """
+        TO TEST IF ITS CONVERTED CORRECTLY TO REAL MAP
+
+        a = (x*self.shrink_factor - self.map_width/2.0)*self.map_resolution + (self.map_real_origin_x + (self.map_width / 2.0) * self.map_resolution)
+        b = (y*self.shrink_factor - self.map_height/2.0)*self.map_resolution + (self.map_real_origin_y + (self.map_height / 2.0) * self.map_resolution)
+        
+        test_odo = deepcopy(self.current_odometry)
+        test_odo.pose.pose.position.x = a
+        test_odo.pose.pose.position.y = b
+        test_odo.pose.pose.orientation.x = 0
+        test_odo.pose.pose.orientation.y = 0
+        test_odo.pose.pose.orientation.z = 0
+        test_odo.pose.pose.orientation.w = 0
+
+        rospy.loginfo("gcm, array x,y: {}".format((x*self.shrink_factor, y*self.shrink_factor)))
+               
+        self.test_pose_publisher.publish(test_odo)
+        """
+        
+        if self.global_costmap[y*self.shrink_factor*self.map_width + x*self.shrink_factor] == 0:
+            return False
+        else:
+            rospy.loginfo("Blocked in global costmap: True")
+            return True
 
     def getHeading(self, q):
         """
@@ -407,77 +486,7 @@ class Explore():
         yaw = math.atan2(2 * (q.x * q.y + q.w * q.z),
                      q.w * q.w + q.x * q.x - q.y * q.y - q.z * q.z)
         return yaw
-    
-    #Not used
-    def rm_dup(arr):
-        # from wallhugger script
-        # removes duplicates if the first n elements of the array are known to be duplicates
-        # first value is always the erroneous measurement
-        iters =len(arr)
-        # count how many duplicates there are
-        for i in range(iters):
-            if arr[i] == arr[0]:
-                pass # count as duplicate
-            else:
-                break
-            fixed_arr = arr[i:]
-        return fixed_arr
 
-    def test(self):
-        map = np.ones((10, 10), dtype = np.uint8)
-        map[1,1] = 0
-        map[1,2] = 0
-        map[2,1] = 0
-        map[3,1] = 0
-        map[1,3] = 0
-        map[1,4] = 0
-        map[3,2] = 0
-        map[3,3] = 0
-        map[1,5] = 0
-        map[2,4] = 0
-        map[3,4] = 0
-        map[7,7] = 0
-        map[7,8] = 0
-        map[7,9] = 0
-        map[8,7] = 0
-        map[9,7] = 0
-        grid = Grid(matrix=map)
-        start = grid.node(0, 0)
-        end = grid.node(0, 0)
-        finder = AStarFinder(diagonal_movement=DiagonalMovement.always)
-        path, runs = finder.find_path(start, end, grid)
-        rospy.loginfo("operations: {}, path length: {}".format(runs, path))
-        rospy.loginfo(grid.grid_str(path=path, start=start, end=end))
-        rospy.loginfo("walkable: {}".format(grid.walkable(9, 9)))
-
-    """
-    def set_exploration_map(self, occ_map):
-        #converts map occ_map to exploration map
-        #O(n^2 + n)
-        # removing rows and columns is actually a bad idea, cause then the coordinates cannot be converted that easily from occ_map
-        to_delete_columns = [True]*occ_map.info.width
-        for i in range(occ_map.info.height):
-            delete_row = True
-            for j in range(occ_map.info.width):
-                cell = occ_map.data[i*occ_map.info.width + j]    
-                #if the cell can be visited by the robot
-                if cell < 0.196 and cell >=0:
-                    delete_row = False
-                    to_delete_columns[j] =False
-                    #not explored
-                    self.def_exploration_map[i][j] = 0
-                else:
-                    #out of bounds
-                    self.def_exploration_map[i][j] = -1
-            #delete row that have no useful information
-            if delete_row == True:
-                self.def_exploration_map.pop(i)
-        #delete columns that have no useful infomration
-        for j in to_delete_columns[::-1]:
-            if to_delete_columns:
-                [x.pop(j) for x in self.def_exploration_map]
-    """
-    
 if __name__ == '__main__':
     rospy.init_node("explorer")
     d = Display()
@@ -486,4 +495,7 @@ if __name__ == '__main__':
     #e.set_map_and_reduce()
     rospy.spin()
     d.display(np.array(e.img).T)
-    d.display_1d(e.local_costmap, e.local_costmap_height, e.local_costmap_width)
+    print("explored areal: {}".format(d.how_much_explored(e.default_map, e.exploration_map)))
+    #d.display_1d(e.local_costmap, e.local_costmap_height, e.local_costmap_width)
+    d.display_1d(e.global_costmap, e.map_height, e.map_width, e.current_goal)
+    d.display_1d(e.global_costmap_update, e.global_costmap_update_height, e.global_costmap_update_width, None)
