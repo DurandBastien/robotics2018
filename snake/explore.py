@@ -16,6 +16,8 @@ from PIL import Image, ImageDraw
 from pathfinding.core.grid import Grid
 from pathfinding.finder.a_star import AStarFinder
 from pathfinding.core.diagonal_movement import DiagonalMovement
+import time
+
 
 """
 use frontier explorer to choose where to go next
@@ -104,11 +106,14 @@ class Display():
                     no_of_available_cells = no_of_available_cells + 1
                     if explored_map[i][j] == EXPLORED:
                         no_of_explored = no_of_explored + 1
-                        
+
         return no_of_explored/(no_of_available_cells*1.0)
 
 class Explore():
     def __init__(self, shrink_factor):
+        self.points_of_interst = [(0, 0), (5, -11.5), (-8.65, -10.0), (8.0, 10.0), (-6.0, 12.0), (-2, -11), (1, 11)]
+        self.start_time = None
+        
         self.current_goal = None
         self.global_costmap_update = None
         self.global_costmap_update_width = None
@@ -188,7 +193,6 @@ class Explore():
         
         self.goal_publisher = rospy.Publisher("/where_to_go", PoseWithCovarianceStamped ,queue_size=1)
 
-        self.test_pose_publisher = rospy.Publisher("/test_pose", PoseWithCovarianceStamped ,queue_size=1)
         
 
 
@@ -200,7 +204,7 @@ class Explore():
         self.local_costmap_setup = True
 
     def _local_costmap_update_callback(self, costmap):
-        rospy.loginfo("local_costmap_update_callback")
+        #rospy.loginfo("local_costmap_update_callback")
         self.local_costmap = costmap.data
 
         #rospy.loginfo("lcmu, x, y: {}".format((costmap.x, costmap.y)))
@@ -237,9 +241,13 @@ class Explore():
         
     def _odometry_callback(self, odo):
         if self.map_set and self.current_odometry is not None and self.msg == "explore":
+            if self.start_time is None:
+                print("started time")
+                self.start_time = time.time()
             copy_odo = deepcopy(self.current_odometry)
             
-            goal_pose = self.calc_next_goal(copy_odo.pose.pose)
+            #goal_pose = self.calc_next_goal(copy_odo.pose.pose)
+            goal_pose = self.simple_calc_next_goal(copy_odo.pose.pose)
             self.current_goal = (goal_pose[0]*3, goal_pose[1]*3)
             rospy.loginfo("current_goal: {}".format(self.current_goal))
 
@@ -456,7 +464,30 @@ class Explore():
                 self.restart_exploration()
                 level = 0
   
+
+
+    def simple_calc_next_goal(self, pose):
+        self.exploration_map = np.array(self.img).T
+        if len(self.points_of_interst) == 0:
+            return (0, 0)
+
+        shortest= []
+        i = 0
+        x, y = self.translate_coord(pose.position.x, pose.position.y)
+        rospy.loginfo("simple_calc, x,y: {}".format((x,y)))
+        while len(self.points_of_interst) > i:
             
+            p1 = self.points_of_interst[i]
+            x2, y2 = self.translate_coord(p1[0], p1[1])
+            dis = self.calc_dis(x, y, x2, y2)
+            if dis < 1:
+                del self.points_of_interst[i]
+            else:
+                shortest.append((dis, (x2, y2)))
+            i+=1
+            
+        shortest.sort()
+        return shortest[0][1]
             
     def translate_coord(self, x, y):
         x = int((x - self.map_origin_x)/(self.map_resolution*self.shrink_factor) + 0.5
@@ -535,6 +566,10 @@ class Explore():
 
         return r_dis >= 0.5
 
+    def calc_dis(self, x, y, x2, y2):
+        r_dis = math.sqrt(math.pow((x2 - x)*self.map_resolution*self.shrink_factor, 2) + math.pow((y2 - y)*self.map_resolution*self.shrink_factor, 2))
+        return r_dis
+
 
     
     def blocked_in_local_costmap(self, x, y):
@@ -562,25 +597,6 @@ class Explore():
         rospy.loginfo("global costmap initiated: {}".format(self.global_costmap is not None))
         if self.global_costmap == None:
             return False
-        
-        """
-        TO TEST IF ITS CONVERTED CORRECTLY TO REAL MAP
-
-        a = (x*self.shrink_factor - self.map_width/2.0)*self.map_resolution + (self.map_real_origin_x + (self.map_width / 2.0) * self.map_resolution)
-        b = (y*self.shrink_factor - self.map_height/2.0)*self.map_resolution + (self.map_real_origin_y + (self.map_height / 2.0) * self.map_resolution)
-        
-        test_odo = deepcopy(self.current_odometry)
-        test_odo.pose.pose.position.x = a
-        test_odo.pose.pose.position.y = b
-        test_odo.pose.pose.orientation.x = 0
-        test_odo.pose.pose.orientation.y = 0
-        test_odo.pose.pose.orientation.z = 0
-        test_odo.pose.pose.orientation.w = 0
-
-        rospy.loginfo("gcm, array x,y: {}".format((x*self.shrink_factor, y*self.shrink_factor)))
-               
-        self.test_pose_publisher.publish(test_odo)
-        """
         
         if self.global_costmap[y*self.shrink_factor*self.map_width + x*self.shrink_factor] == 0:
             return False
@@ -615,7 +631,8 @@ if __name__ == '__main__':
     #e.set_map_and_reduce()
     rospy.spin()
     d.display(np.array(e.img).T)
-    print("explored areal: {}".format(d.how_much_explored(e.default_map, e.exploration_map)))
+    print("explored area: {}".format(d.how_much_explored(e.default_map, e.exploration_map)))
+    print("time it took: {}".format((time.time() - e.start_time)))
     #d.display_1d(e.local_costmap, e.local_costmap_height, e.local_costmap_width)
-    d.display_1d(e.global_costmap, e.map_height, e.map_width, e.current_goal)
-    d.display_1d(e.global_costmap_update, e.global_costmap_update_height, e.global_costmap_update_width, None)
+    #d.display_1d(e.global_costmap, e.map_height, e.map_width, e.current_goal)
+    #d.display_1d(e.global_costmap_update, e.global_costmap_update_height, e.global_costmap_update_width, None)
