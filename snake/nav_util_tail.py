@@ -40,7 +40,7 @@ class nav_util(object):
         rospy.loginfo('nav_util waiting for a map...')
         self._pose_subscriber = rospy.Subscriber('/amcl_pose', PoseWithCovarianceStamped, self._pose_callback, queue_size=1)
         self.occupancy_map = None
-        self.tail_viz = rospy.Publisher('/tail', PoseArray)
+        self.tail_viz = rospy.Publisher('/tail', PoseArray, queue_size=1)
         try:
             occ_map = rospy.wait_for_message("/map", OccupancyGrid, 20)
         except:
@@ -236,6 +236,11 @@ class SnakeTailController(object):
                                 + self.distanceUnit, bestNode[3]))
 
     def heapAStar(self, fakeTargetPoint):
+        rospy.loginfo("heapAStar to point: " + str(fakeTargetPoint))
+        if self.mapSet == set():
+            rospy.logerr("=============== CRITICAL ERROR ============== \n A* search being called before a map is given.  Program will now crash. \n  =============== CRITICAL ERROR ==============")
+            rospy.loginfo("=============== CRITICAL ERROR ============== \n A* search being called before a map is given.  Program will now crash. \n  =============== CRITICAL ERROR ==============")
+            raise Exception
         targetPoint = self.roundToNearest(fakeTargetPoint)
         if abs(self.currentPoint.x - targetPoint.x) <= self.distanceUnit / 2 and abs(self.currentPoint.y - targetPoint.y) <= self.distanceUnit / 2:
             return self.currentPoint
@@ -277,6 +282,7 @@ class SnakeTailController(object):
         self.mapSet = newMap
 
     def __adjacentPoints(self, p, snakeTail):
+        rospy.loginfo("adjacentPoints to point: " + str(p))
         returnSet = set()
         pointSet = set()
         nearest = self.roundToNearest(p)
@@ -306,6 +312,7 @@ class SnakeTailController(object):
                          # It's just: how much longer do we make the tail each time we eat something?
 
     def changePosition(self, newPoint):
+        rospy.loginfo("changePosition to point: " + str(newPoint))
         if self.currentPoint is None:
             self.currentPoint = newPoint
             self.tail = [newPoint]
@@ -363,7 +370,7 @@ class SnakeTailController(object):
         return True
 
     def __removeRedundantPoints(self, tailPoints, length):  # Remove points that aren't part of the tail any more.
-        rospy.loginfo("tail: " + str(self.tail))
+        #rospy.loginfo("tail: " + str(self.tail))
         cumulativeLength = 0.0
         finished = False
         for (index, value) in enumerate(tailPoints):
