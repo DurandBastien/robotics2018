@@ -80,8 +80,7 @@ class nav_util(object):
         targetPoint = pose.pose.pose.position
         rospy.loginfo('targetPoint: ' + str(targetPoint))
         currentTarget = self.tailCont.heapAStar(targetPoint)  #The first line to change if you want to use the alternative (worse) pathfinding algorithm.
-        rospy.loginfo('currentTarget: ' + str(currentTarget))
-        
+        rospy.loginfo('currentTarget: ' + str(currentTarget))       
 	while self.tailCont.roundToNearest(targetPoint) != self.tailCont.currentPoint:
             goal.target_pose.header.frame_id = 'map'
             goal.target_pose.header.stamp = rospy.Time.now()
@@ -206,7 +205,7 @@ class SnakeTailController(object):
         if self.currentPoint == targetPoint:
             return self.currentPoint
         mapNodes = []
-        starters = self.__adjacentPoints(self.currentPoint, self, 1)
+        starters = self.__adjacentPoints(self.currentPoint, self)
         for start in starters:
             mapNodes.append((start[0], start[2], self.distanceUnit, start[0]))
                              # (Point, tail, cost, startingMove)
@@ -219,8 +218,7 @@ class SnakeTailController(object):
                     mapNodes.remove(bestNode)
             if self.__distance(bestNode[0], targetPoint) == 0:
                 return bestNode[3]
-            adjPoints = self.__adjacentPoints(bestNode[0], bestNode[1],
-                    1)
+            adjPoints = self.__adjacentPoints(bestNode[0], bestNode[1])
             for p in adjPoints:
                 mapNodes.append((p[0], p[2], bestNode[2]
                                 + self.distanceUnit, bestNode[3]))
@@ -229,7 +227,7 @@ class SnakeTailController(object):
         targetPoint = self.roundToNearest(fakeTargetPoint)
         if abs(self.currentPoint.x - targetPoint.x) <= self.distanceUnit / 2 and abs(self.currentPoint.y - targetPoint.y) <= self.distanceUnit / 2:
             return self.currentPoint
-        newPoints = self.__adjacentPoints(self.currentPoint, self, 1)
+        newPoints = self.__adjacentPoints(self.currentPoint, self)
         frontier = []
         for newP in newPoints:
             heapq.heappush(frontier, FrontierItem(self.distanceUnit + self.__distance(newP[0], targetPoint), self.distanceUnit, newP[0], newP[0], newP[2]))
@@ -238,8 +236,7 @@ class SnakeTailController(object):
             currentItem = heapq.heappop(frontier)
             if self.__distance(currentItem.location, targetPoint) == 0:
                 return currentItem.startingMove
-            newPoints = self.__adjacentPoints(currentItem.location,
-                    currentItem.tail, 1)
+            newPoints = self.__adjacentPoints(currentItem.location, currentItem.tail)
             for newP in newPoints:
                 temp = copy.deepcopy(self)
                 temp.changePosition(newP[0])
@@ -256,6 +253,8 @@ class SnakeTailController(object):
             shortestDistance = float('inf')
             for p in self.mapSet:
                 dist = self.__distance(p, unroundedPoint)
+                if dist < (self.distanceUnit / 2):
+                    return p
                 if dist < shortestDistance:
                     shortestDistance = dist
                     closestPoint = p
@@ -265,19 +264,27 @@ class SnakeTailController(object):
     def updateMap(self, newMap):
         self.mapSet = newMap
 
-    def __adjacentPoints(self, p, snakeTail, weight=0):
+    def __adjacentPoints(self, p, snakeTail):
         returnSet = set()
         pointSet = set()
-        pointSet.add(self.roundToNearest(Point(p.x + self.distanceUnit, p.y, 0.0)))
-        pointSet.add(self.roundToNearest(Point(p.x - self.distanceUnit, p.y, 0.0)))
-        pointSet.add(self.roundToNearest(Point(p.x, p.y + self.distanceUnit, 0.0)))
-        pointSet.add(self.roundToNearest(Point(p.x, p.y - self.distanceUnit, 0.0)))
+        nearest = self.roundToNearest(p)
+        pointA = self.roundToNearest(Point(p.x + self.distanceUnit, p.y, 0.0))
+        if self.__reachable(pointA):
+            pointSet.add(pointA)
+        pointA = self.roundToNearest(Point(p.x - self.distanceUnit, p.y, 0.0))
+        if self.__reachable(pointB):
+            pointSet.add(pointB)
+        pointA = self.roundToNearest(Point(p.x, p.y + self.distanceUnit, 0.0))
+        if self.__reachable(pointC):
+            pointSet.add(pointC)
+        pointA = self.roundToNearest(Point(p.x, p.y - self.distanceUnit, 0.0))
+        if self.__reachable(pointD):
+            pointSet.add(pointD)
         for q in pointSet:
-            if self.__reachable(q):
-                tailA = copy.deepcopy(snakeTail)
-                if tailA.isLegalMove(tailA.tail, q):
-                    tailA.changePosition(q)
-                    returnSet.add((Point(q.x, q.y, 0.0), weight, tailA))
+            tempTail = copy.deepcopy(snakeTail)
+            if tempTail.isLegalMove(tempTail.tail, q):
+                tempTail.changePosition(q)
+                returnSet.add((q, 0, tempTail))
         # Each item in the returned set is a tuple of the form (point, weight(UNUSED), tail)
         return returnSet
 
@@ -329,7 +336,7 @@ class SnakeTailController(object):
         return self.__between(X, pointA1.x, pointA2.x) and self.__between(Y, pointA1.y, pointA2.y) and self.__between(X, pointB1.x, pointB2.x) and self.__between(Y, pointB1.y, pointB2.y)
 
     def __between(self, x, a, b):
-        return a < x < b or b < x < a or b == x == a
+        return a <= x <= b or b <= x <= a
 
     def isLegalMove(self, tailPoints, target):
         if self.tail is None:
@@ -359,9 +366,7 @@ class SnakeTailController(object):
                     finished = True
                 else:
                     if index != 0:
-                        cumulativeLength = cumulativeLength \
-                            + self.__distance(tailPoints[index],
-                                tailPoints[index - 1])
+                        cumulativeLength += self.__distance(tailPoints[index], tailPoints[index - 1])
         return tailPoints
 
 
